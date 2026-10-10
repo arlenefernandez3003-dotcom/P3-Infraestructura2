@@ -1,0 +1,125 @@
+Current configuration : 1842 bytes
+!
+! Last configuration change at 12:31:51 UTC Sat Oct 10 2026
+!
+version 15.2
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+service compress-config
+!
+hostname SW-USUARIOS
+!
+boot-start-marker
+boot-end-marker
+!
+!
+!
+no aaa new-model
+!
+!
+!
+!
+!
+!
+!
+!
+no ip domain-lookup
+ip cef
+no ipv6 cef
+!
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Ethernet0/0
+ description Trunk hacia Router Cisco Et0/1
+ switchport trunk allowed vlan 10
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 999
+ switchport mode trunk
+ switchport nonegotiate
+!
+interface Ethernet0/1
+ description Cliente VPN
+ switchport access vlan 10
+ switchport mode access
+ switchport nonegotiate
+ spanning-tree portfast edge
+!
+interface Ethernet0/2
+ description Cliente VPN
+ switchport access vlan 10
+ switchport mode access
+ switchport nonegotiate
+ spanning-tree portfast edge
+!
+interface Ethernet0/3
+ description Puerto sin uso
+ switchport access vlan 999
+ switchport mode access
+ shutdown
+!
+interface Ethernet1/0
+ description Puerto sin uso
+ switchport access vlan 999
+ switchport mode access
+ shutdown
+!
+interface Ethernet1/1
+ description Puerto sin uso
+ switchport access vlan 999
+ switchport mode access
+ shutdown
+!
+interface Ethernet1/2
+ description Puerto sin uso
+ switchport access vlan 999
+ switchport mode access
+ shutdown
+!
+interface Ethernet1/3
+ description Puerto sin uso
+ switchport access vlan 999
+ switchport mode access
+ shutdown
+!
+ip forward-protocol nd
+!
+ip http server
+ip http secure-server
+!
+ip ssh server algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+ip ssh client algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+!
+!
+!
+!
+!
+control-plane
+!
+!
+line con 0
+ logging synchronous
+line aux 0
+line vty 0 4
+ login
+!
+!
+!
+end
