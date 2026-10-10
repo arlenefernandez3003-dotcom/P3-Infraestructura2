@@ -22,10 +22,10 @@
 2. [Topología y Direccionamiento](#2-topología-y-direccionamiento)
 3. [Procedimiento paso a paso](#3-procedimiento-paso-a-paso)
    - [Paso 1. Red pública, redes virtuales y PNETLab](#paso-1-red-pública-redes-virtuales-y-pnetlab)
-   - [Paso 2. Switches SW-USUARIOS y SW-SERVIDORES](#paso-2-switches-sw-usuarios-y-sw-servidores)
+   - [Paso 2. Switch SW-USUARIOS](#paso-2-switch-sw-usuarios)
    - [Paso 3. Router Cisco: VLAN 10, DHCP y NAT](#paso-3-router-cisco-vlan-10-dhcp-y-nat)
    - [Paso 4. Acceso inicial del FortiGate (CLI)](#paso-4-acceso-inicial-del-fortigate-cli)
-   - [Paso 5. Interfaces y sub-interfaces del FortiGate](#paso-5-interfaces-y-sub-interfaces-del-fortigate)
+   - [Paso 5. Interfaces del FortiGate](#paso-5-interfaces-del-fortigate)
    - [Paso 6. Ruta por defecto y DNS](#paso-6-ruta-por-defecto-y-dns)
    - [Paso 7. Conectividad de Clientes y Servidores](#paso-7-conectividad-de-clientes-y-servidores)
    - [Paso 8. Objetos, usuarios y grupos del FortiGate](#paso-8-objetos-usuarios-y-grupos-del-fortigate)
@@ -54,7 +54,7 @@ Esta práctica publica servicios de un **Jump Server** a usuarios remotos a trav
   * **Usuario con privilegios:** servicio **Web**, **PuTTY** (SSH) y **RDP** (Conexión a Escritorio Remoto) hacia el Web Server.
 * El **equipo de red** (Router Cisco) es el gateway de la **VLAN 10** de los usuarios, entrega **DHCP** y hace **NAT** hacia el ISP.
 
-Toda la configuración y demostración del **FortiGate se hace por GUI**. El Router Cisco y los switches se configuran por CLI; los servidores Windows, con la consola y PowerShell.
+Toda la configuración y demostración del **FortiGate se hace por GUI**. El Router Cisco y el switch de usuarios se configuran por CLI; los servidores Windows, con la consola y PowerShell.
 
 ---
 
@@ -74,23 +74,23 @@ Toda la configuración y demostración del **FortiGate se hace por GUI**. El Rou
                 ┌─────────────┴──┐   ┌──────┴────────────────────────┐
                 │  Router Cisco  │   │           FortiGate           │
                 │  Et0/0 (WAN)   │   │ port1 (WAN)  202.50.73.254/24 │
-                │  202.50.73.10  │   │ port2 (trunk, sub-interfaces) │
-                │  Et0/1 (trunk) │   │  ├ VLAN20  10.7.30.130/29     │
-                │  └ Et0/1.10    │   │  └ VLAN30  10.7.30.138/29     │
-                │   10.7.30.2/25 │   └──────────────┬────────────────┘
-                └───────┬────────┘                  │ trunk 802.1Q · VLAN 20, 30
-                        │ trunk VLAN 10     ┌───────┴───────┐
-                ┌───────┴────────┐          │ SW-SERVIDORES │
-                │  SW-USUARIOS   │          └───┬───────┬───┘
-                └───┬────────┬───┘              │       │
-                    │        │               e0/1     e0/2
-                  e0/1     e0/2                │       │
-                    │        │          ┌──────┴───┐ ┌─┴─────────┐
-              ┌─────┴──┐ ┌───┴────┐     │  Jump    │ │  Web      │
-              │ Cliente│ │ Cliente│     │  Server  │ │  Server   │
-              │ Básico │ │ Priv.  │     │ VLAN 20  │ │ VLAN 30   │
-              └────────┘ └────────┘     │ .131/29  │ │ .139/29   │
-               VLAN 10 · DHCP           └──────────┘ └───────────┘
+                │  202.50.73.10  │   │ port2 (Jump) 10.7.30.130/29   │
+                │  Et0/1 (trunk) │   │ port3 (Web)  10.7.30.138/29   │
+                │  └ Et0/1.10    │   └───────┬─────────────────┬─────┘
+                │   10.7.30.2/25 │           │                 │
+                └───────┬────────┘    ┌──────┴───────┐  ┌──────┴───────┐
+                        │ trunk       │     Jump     │  │     Web      │
+                ┌───────┴────────┐    │    Server    │  │    Server    │
+                │  SW-USUARIOS   │    │10.7.30.131/29│  │10.7.30.139/29│
+                └─┬─────────────┬┘    └──────────────┘  └──────────────┘
+                  │             │
+                 e0/1          e0/2
+                  │             │
+             ┌────┴─────┐  ┌────┴─────┐
+             │  Cliente │  │  Cliente │
+             │  Básico  │  │  Priv.   │
+             └──────────┘  └──────────┘
+             VLAN 10 · DHCP
 
    ┄┄┄ VPN de acceso remoto (IPsec) ┄┄┄  Cliente ──► FortiGate 202.50.73.254
         IP asignada al cliente: 10.7.30.145 – 10.7.30.150
@@ -107,14 +107,16 @@ Toda la configuración y demostración del **FortiGate se hace por GUI**. El Rou
 
 ### 2.2 Redes y VLSM sobre `10.7.30.0/24`
 
-| Bloque | Requisito | Red | VLAN | Hosts utilizables | Gateway | Broadcast |
+| Bloque | Requisito | Red | VLAN / puerto | Hosts utilizables | Gateway | Broadcast |
 |---|---|---|---|---|---|---|
 | Usuarios (2 usuarios) | `/25` | 10.7.30.0/25 | 10 | .1 – .126 | 10.7.30.2 (Router Cisco) | .127 |
-| Jump Server (su propia LAN) | `/29` | 10.7.30.128/29 | 20 | .129 – .134 | 10.7.30.130 (FortiGate) | .135 |
-| Web Server (su propia LAN) | `/29` | 10.7.30.136/29 | 30 | .137 – .142 | 10.7.30.138 (FortiGate) | .143 |
+| Jump Server (su propia LAN) | `/29` | 10.7.30.128/29 | port2 | .129 – .134 | 10.7.30.130 (FortiGate) | .135 |
+| Web Server (su propia LAN) | `/29` | 10.7.30.136/29 | port3 | .137 – .142 | 10.7.30.138 (FortiGate) | .143 |
 | Pool de clientes VPN | `/28` (reservado) | 10.7.30.144/28 | — | usa .145 – .150 | — | .159 |
 | Libre | — | 10.7.30.160 – .255 | — | — | — | — |
 
+> **Cada LAN de servidor usa su propio puerto físico del FortiGate** (`port2` y `port3`; el equipo tiene cuatro), por lo que no hacen falta sub-interfaces VLAN ni switch para los servidores.
+>
 > **No se asigna la primera IP utilizable de ninguna red:** el gateway usa la segunda IP y los dispositivos las siguientes. En la red pública, `.1` es el adaptador VMnet8 de la PC, `.2` el gateway NAT de VMware, el Router Cisco usa `.10` y el FortiGate `.254`.
 
 ### 2.3 Tabla de Dispositivos
@@ -126,8 +128,8 @@ Toda la configuración y demostración del **FortiGate se hace por GUI**. El Rou
 | **Router Cisco** (Et0/0) | IOS | 202.50.73.10 | /24 | 202.50.73.2 | Estática | WAN y NAT de los usuarios |
 | **Router Cisco** (Et0/1.10) | IOS | 10.7.30.2 | /25 | — | Estática | Gateway VLAN 10 y DHCP |
 | **FortiGate** (port1) | FortiOS 7.0.3 | 202.50.73.254 | /24 | 202.50.73.2 | Estática | WAN y servidor VPN |
-| **FortiGate** (VLAN20) | FortiOS 7.0.3 | 10.7.30.130 | /29 | — | Estática | Gateway del Jump Server |
-| **FortiGate** (VLAN30) | FortiOS 7.0.3 | 10.7.30.138 | /29 | — | Estática | Gateway del Web Server |
+| **FortiGate** (port2) | FortiOS 7.0.3 | 10.7.30.130 | /29 | — | Estática | Gateway del Jump Server |
+| **FortiGate** (port3) | FortiOS 7.0.3 | 10.7.30.138 | /29 | — | Estática | Gateway del Web Server |
 | **Cliente Básico** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario sin privilegios |
 | **Cliente Privilegiado** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario con privilegios |
 | **Jump Server** (`JUMP-SRV`) | Windows Server 2022 | 10.7.30.131 | /29 | 10.7.30.130 | Estática | Dominio, RDS, RD Web, RD Gateway |
@@ -184,14 +186,14 @@ Los pasos están en el orden en que se ejecutan. Cada uno depende de los anterio
 
 **1.2 — Una red virtual por cada VM**
 
-Cada VM de VMware se conecta a su propia red virtual **Host-only** (sin DHCP de VMware), y esa red se enlaza a PNETLab con un nodo **Cloud**. Así cada VM entra al switch por **un solo cable**.
+Cada VM de VMware se conecta a su propia red virtual **Host-only** (sin DHCP de VMware), y esa red se enlaza a PNETLab con un nodo **Cloud**. Así cada VM entra por **un solo cable**.
 
-| VM | Red virtual (ejemplo) | Puerto del switch |
+| VM | Red virtual (ejemplo) | Conectada a |
 |---|---|---|
 | Cliente Básico | VMnet11 | `SW-USUARIOS` e0/1 |
 | Cliente Privilegiado | VMnet12 | `SW-USUARIOS` e0/2 |
-| Jump Server | VMnet13 | `SW-SERVIDORES` e0/1 |
-| Web Server | VMnet14 | `SW-SERVIDORES` e0/2 |
+| Jump Server | VMnet13 | FortiGate `port2` |
+| Web Server | VMnet14 | FortiGate `port3` |
 
 > Deshabilitar el servidor DHCP de VMware en estas redes (`Virtual Network Editor → VMnet → desmarcar "Use local DHCP service"`): el DHCP de los clientes lo entrega el Router Cisco.
 
@@ -199,16 +201,15 @@ Cada VM de VMware se conecta a su propia red virtual **Host-only** (sin DHCP de 
 
 1. Clic derecho en el área de trabajo → `Add an object → Network`: `Management(Cloud0)`, nombre `Nube-PNET` (la red VMnet8).
 2. Conectar `Et0/0` del Router Cisco y `port1` del FortiGate a `Nube-PNET`.
-3. Conectar `Et0/1` del Router Cisco a `e0/0` de `SW-USUARIOS`, y `port2` del FortiGate a `e0/0` de `SW-SERVIDORES`.
-4. Crear un nodo Cloud por cada VM (según la tabla del 1.2) y conectarlo al puerto indicado del switch.
+3. Conectar `Et0/1` del Router Cisco a `e0/0` de `SW-USUARIOS`.
+4. Crear un nodo Cloud por cada cliente y conectarlos a `e0/1` (Cliente Básico) y `e0/2` (Cliente Privilegiado) de `SW-USUARIOS`.
+5. Crear un nodo Cloud por cada servidor y conectarlos al FortiGate: Jump Server a `port2` y Web Server a `port3`.
 
 ---
 
-### Paso 2. Switches SW-USUARIOS y SW-SERVIDORES
+### Paso 2. Switch SW-USUARIOS
 
-Los dos switches crean las VLANs, llevan el trunk hacia el Router Cisco o el FortiGate y dejan apagados los puertos sin uso. Se pega un bloque a la vez (scripts: [`scripts/sw-usuarios.txt`](scripts/sw-usuarios.txt) y [`scripts/sw-servidores.txt`](scripts/sw-servidores.txt)).
-
-**2.1 — SW-USUARIOS (VLAN 10)**
+El switch de usuarios crea la VLAN 10, lleva el trunk hacia el Router Cisco y deja apagados los puertos sin uso (script: [`scripts/sw-usuarios.txt`](scripts/sw-usuarios.txt)).
 
 ```bash
 enable
@@ -254,70 +255,13 @@ end
 write memory
 ```
 
-**2.2 — SW-SERVIDORES (VLAN 20 y 30)**
-
-```bash
-enable
-configure terminal
-
-hostname SW-SERVIDORES
-no ip domain-lookup
-spanning-tree mode rapid-pvst
-
-vlan 20
- name JUMP-SERVER
-vlan 30
- name WEB-SERVER
-vlan 999
- name BLACKHOLE
-exit
-
-interface Ethernet0/0
- description Trunk hacia FortiGate port2
- switchport trunk encapsulation dot1q
- switchport mode trunk
- switchport nonegotiate
- switchport trunk native vlan 999
- switchport trunk allowed vlan 20,30
- no shutdown
-exit
-
-interface Ethernet0/1
- description Jump Server - VLAN 20
- switchport mode access
- switchport access vlan 20
- switchport nonegotiate
- spanning-tree portfast
- no shutdown
-exit
-
-interface Ethernet0/2
- description Web Server - VLAN 30
- switchport mode access
- switchport access vlan 30
- switchport nonegotiate
- spanning-tree portfast
- no shutdown
-exit
-
-interface range Ethernet0/3 , Ethernet1/0 - 3
- description Puerto sin uso
- switchport mode access
- switchport access vlan 999
- shutdown
-exit
-
-end
-write memory
-```
-
-**Verificación (en ambos switches):**
+**Verificación:**
 ```bash
 show vlan brief
 show interfaces trunk
 ```
 
-> Ver evidencia: [01_switch_usuarios.png](screenshots/01_switch_usuarios.png), [02_switch_servidores.png](screenshots/02_switch_servidores.png)
+> Ver evidencia: [01_switch_usuarios.png](screenshots/01_switch_usuarios.png)
 
 ---
 
@@ -399,7 +343,7 @@ show ip dhcp pool
 show ip nat translations
 ```
 
-> Ver evidencia: [03_cisco_interfaces.png](screenshots/03_cisco_interfaces.png), [04_cisco_dhcp_nat.png](screenshots/04_cisco_dhcp_nat.png)
+> Ver evidencia: [02_cisco_interfaces.png](screenshots/02_cisco_interfaces.png), [03_cisco_dhcp_nat.png](screenshots/03_cisco_dhcp_nat.png)
 
 ---
 
@@ -420,15 +364,15 @@ end
 
 Acceder desde el navegador de la PC local a `https://202.50.73.254` con las credenciales por defecto (`admin` / contraseña vacía) y definir una contraseña segura.
 
-> Ver evidencia: [05_cli_acceso_fortigate.png](screenshots/05_cli_acceso_fortigate.png)
+> Ver evidencia: [04_cli_acceso_fortigate.png](screenshots/04_cli_acceso_fortigate.png)
 
 ---
 
-### Paso 5. Interfaces y sub-interfaces del FortiGate
+### Paso 5. Interfaces del FortiGate
 
-El FortiGate solo dispone de dos puertos: `port1` es la WAN y `port2` es un trunk 802.1Q hacia `SW-SERVIDORES`, sobre el que se crean las dos LAN de los servidores como sub-interfaces VLAN. Todo por GUI en `https://202.50.73.254`. **Ruta:** `Network → Interfaces`
+El FortiGate usa tres de sus cuatro puertos físicos: `port1` es la WAN y cada servidor tiene su propia LAN en un puerto dedicado (`port2` para el Jump Server y `port3` para el Web Server). `port4` queda sin usar. Todo por GUI en `https://202.50.73.254`. **Ruta:** `Network → Interfaces`
 
-#### 5.1 Interfaces físicas
+#### 5.1 Interfaces
 
 **port1 — WAN-NUBE:**
 
@@ -439,58 +383,42 @@ El FortiGate solo dispone de dos puertos: `port1` es la WAN y `port2` es un trun
 | IP/Netmask | `202.50.73.254 / 255.255.255.0` |
 | Administrative access | `HTTPS, SSH, Ping` |
 
-**port2 — TRUNK-SW:**
+**port2 — LAN-JUMP:**
 
 | Campo | Valor |
 |---|---|
-| Alias | `TRUNK-SW` |
-| Role | `Undefined` |
-| Addressing mode | `Manual` (`0.0.0.0/0.0.0.0`) |
-
-#### 5.2 Sub-interfaz del Jump Server (VLAN 20)
-
-**Ruta:** `Network → Interfaces → Create New → Interface`
-
-| Campo | Valor |
-|---|---|
-| Name | `VLAN20` |
 | Alias | `LAN-JUMP` |
-| Type | `VLAN` |
-| Interface | `port2` |
-| VLAN ID | `20` |
 | Role | `LAN` |
+| Addressing mode | `Manual` |
 | IP/Netmask | `10.7.30.130 / 255.255.255.248` |
 | Administrative access | `Ping` |
 
-#### 5.3 Sub-interfaz del Web Server (VLAN 30)
+**port3 — LAN-WEB:**
 
 | Campo | Valor |
 |---|---|
-| Name | `VLAN30` |
 | Alias | `LAN-WEB` |
-| Type | `VLAN` |
-| Interface | `port2` |
-| VLAN ID | `30` |
 | Role | `LAN` |
+| Addressing mode | `Manual` |
 | IP/Netmask | `10.7.30.138 / 255.255.255.248` |
 | Administrative access | `Ping` |
 
-#### 5.4 MTU y MSS de las sub-interfaces
+#### 5.2 MTU y MSS de las interfaces
 
-> **Nota técnica:** en PNETLab sobre VMware, los paquetes IP de 1500 bytes no pasan entre los equipos y el FortiGate por el trunk, y las descargas grandes se congelan. Se corrige bajando el MTU de las sub-interfaces y fijando el MSS TCP, y con un MTU de 1460 en los equipos finales (Paso 7).
+> **Nota técnica:** en PNETLab sobre VMware, los paquetes IP de 1500 bytes no pasan entre los equipos y el FortiGate, y las descargas grandes se congelan. Se corrige bajando el MTU de las interfaces de los servidores y fijando el MSS TCP en el FortiGate, y con un MTU de 1460 en los equipos finales (Paso 7).
 
-**MTU — Ruta:** `Network → Interfaces → VLAN20 / VLAN30 → Edit` → activar **Override default MTU value** y escribir `1480`.
+**MTU — Ruta:** `Network → Interfaces → port2 / port3 → Edit` → activar **Override default MTU value** y escribir `1480`.
 
 El MSS TCP no tiene campo en la GUI y se fija desde la consola del FortiGate, junto con el MTU, en un solo bloque:
 
 ```bash
 config system interface
-    edit "VLAN20"
+    edit "port2"
         set mtu-override enable
         set mtu 1480
         set tcp-mss 1440
     next
-    edit "VLAN30"
+    edit "port3"
         set mtu-override enable
         set mtu 1480
         set tcp-mss 1440
@@ -500,11 +428,11 @@ end
 
 **Verificación:**
 ```bash
-show full-configuration system interface VLAN20 | grep mtu
-show full-configuration system interface VLAN20 | grep tcp-mss
+show full-configuration system interface port2 | grep mtu
+show full-configuration system interface port2 | grep tcp-mss
 ```
 
-> Ver evidencia: [06_interfaces_fortigate.png](screenshots/06_interfaces_fortigate.png), [07_mtu_fortigate.png](screenshots/07_mtu_fortigate.png)
+> Ver evidencia: [05_interfaces_fortigate.png](screenshots/05_interfaces_fortigate.png), [06_mtu_fortigate.png](screenshots/06_mtu_fortigate.png)
 
 ---
 
@@ -530,7 +458,7 @@ show full-configuration system interface VLAN20 | grep tcp-mss
 | Gateway Address | `202.50.73.2` |
 | Interface | `port1 (WAN-NUBE)` |
 
-> Ver evidencia: [08_ruta_dns_fortigate.png](screenshots/08_ruta_dns_fortigate.png)
+> Ver evidencia: [07_ruta_dns_fortigate.png](screenshots/07_ruta_dns_fortigate.png)
 
 ---
 
@@ -575,12 +503,12 @@ Rename-Computer -NewName "WEB-CAJA" -Restart
 Después del reinicio, en cada servidor:
 
 ```powershell
-ping 10.7.30.130        # Jump Server (gateway VLAN 20)
-ping 10.7.30.138        # Web Server (gateway VLAN 30)
+ping 10.7.30.130        # Jump Server (gateway: port2 del FortiGate)
+ping 10.7.30.138        # Web Server (gateway: port3 del FortiGate)
 ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 ```
 
-> Ver evidencia: [09_clientes_dhcp.png](screenshots/09_clientes_dhcp.png), [10_servidores_red.png](screenshots/10_servidores_red.png)
+> Ver evidencia: [08_clientes_dhcp.png](screenshots/08_clientes_dhcp.png), [09_servidores_red.png](screenshots/09_servidores_red.png)
 
 ---
 
@@ -623,7 +551,7 @@ ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 | `VPN-Basico` | `basico` | Políticas del usuario sin privilegios |
 | `VPN-Privilegiado` | `privilegiado` | Políticas del usuario con privilegios |
 
-> Ver evidencia: [11_objetos_fortigate.png](screenshots/11_objetos_fortigate.png), [12_usuarios_grupos_fortigate.png](screenshots/12_usuarios_grupos_fortigate.png)
+> Ver evidencia: [10_objetos_fortigate.png](screenshots/10_objetos_fortigate.png), [11_usuarios_grupos_fortigate.png](screenshots/11_usuarios_grupos_fortigate.png)
 
 ---
 
@@ -654,7 +582,7 @@ ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 
 | Campo | Valor |
 |---|---|
-| Local Interface | `VLAN20` |
+| Local Interface | `port2` |
 | Local Address | `Red-Jump` |
 | Client Address Range | `10.7.30.145-10.7.30.150` |
 | Subnet Mask | `255.255.255.255` |
@@ -681,9 +609,9 @@ Pulsar **Create** y esperar a que termine **sin mensajes de error**.
 show vpn ipsec phase1-interface VPN-Jump
 ```
 
-Debe mostrar `set type dynamic`, `set xauthtype auto`, `set authusrgrp "VPN-Todos"`, el rango `20.25.30`… del Paso 3 (`ipv4-start-ip 10.7.30.145` / `ipv4-end-ip 10.7.30.150`) y una propuesta con AES.
+Debe mostrar `set type dynamic`, `set xauthtype auto`, `set authusrgrp "VPN-Todos"`, el rango de clientes (`ipv4-start-ip 10.7.30.145` / `ipv4-end-ip 10.7.30.150`) y una propuesta con AES.
 
-> Ver evidencia: [13_vpn_asistente_fortigate.png](screenshots/13_vpn_asistente_fortigate.png), [14_vpn_asistente_politica_fortigate.png](screenshots/14_vpn_asistente_politica_fortigate.png), [15_vpn_fase1_fortigate.png](screenshots/15_vpn_fase1_fortigate.png)
+> Ver evidencia: [12_vpn_asistente_fortigate.png](screenshots/12_vpn_asistente_fortigate.png), [13_vpn_asistente_politica_fortigate.png](screenshots/13_vpn_asistente_politica_fortigate.png), [14_vpn_fase1_fortigate.png](screenshots/14_vpn_fase1_fortigate.png)
 
 ---
 
@@ -691,16 +619,16 @@ Debe mostrar `set type dynamic`, `set xauthtype auto`, `set authusrgrp "VPN-Todo
 
 **Ruta:** `Policy & Objects → Firewall Policy`
 
-El asistente del Paso 9 creó una política hacia `VLAN20` para todo el grupo `VPN-Todos`. Esa política **se elimina o se deshabilita**: se reemplaza por las siguientes, que separan a los dos usuarios. El orden importa; el FortiGate evalúa de arriba hacia abajo.
+El asistente del Paso 9 creó una política hacia `port2` para todo el grupo `VPN-Todos`. Esa política **se elimina o se deshabilita**: se reemplaza por las siguientes, que separan a los dos usuarios. El orden importa; el FortiGate evalúa de arriba hacia abajo.
 
 | # | Name | Incoming | Outgoing | Source | Destination | Service | Action | NAT |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `Deny-SSH-VPN-Basico` | `VPN-Jump` | `VLAN20`, `VLAN30` | `Pool-VPN` + usuario `VPN-Basico` | `Servidores` | `SSH` | DENY | — |
-| 2 | `VPN-Basico-Jump` | `VPN-Jump` | `VLAN20` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTPS` | ACCEPT | ❌ |
-| 3 | `VPN-Privilegiado-Jump` | `VPN-Jump` | `VLAN20` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
-| 4 | `Jump-to-Web` | `VLAN20` | `VLAN30` | `Srv-Jump` | `Srv-Web` | `HTTPS`, `RDP`, `SSH` | ACCEPT | ❌ |
-| 5 | `Bloqueo-Jump-Web-Resto` | `VLAN20` | `VLAN30` | `Srv-Jump` | `all` | `ALL` | DENY | — |
-| 6 | `Instalaciones-Temp` | `VLAN20`, `VLAN30` | `port1` | `Red-Jump`, `Red-Web` | `all` | `ALL` | ACCEPT | ✅ Outgoing Interface Address |
+| 1 | `Deny-SSH-VPN-Basico` | `VPN-Jump` | `port2`, `port3` | `Pool-VPN` + usuario `VPN-Basico` | `Servidores` | `SSH` | DENY | — |
+| 2 | `VPN-Basico-Jump` | `VPN-Jump` | `port2` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTPS` | ACCEPT | ❌ |
+| 3 | `VPN-Privilegiado-Jump` | `VPN-Jump` | `port2` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
+| 4 | `Jump-to-Web` | `port2` | `port3` | `Srv-Jump` | `Srv-Web` | `HTTPS`, `RDP`, `SSH` | ACCEPT | ❌ |
+| 5 | `Bloqueo-Jump-Web-Resto` | `port2` | `port3` | `Srv-Jump` | `all` | `ALL` | DENY | — |
+| 6 | `Instalaciones-Temp` | `port2`, `port3` | `port1` | `Red-Jump`, `Red-Web` | `all` | `ALL` | ACCEPT | ✅ Outgoing Interface Address |
 
 **Ajustes adicionales:**
 
@@ -711,7 +639,7 @@ El asistente del Paso 9 creó una política hacia `VLAN20` para todo el grupo `V
 * **Política 6 (`Instalaciones-Temp`):** es **temporal**. Permite a los servidores descargar roles, módulos e instaladores durante la preparación. Se elimina en el Paso 16.
 * Entre el cliente VPN y la LAN del Web Server no hay política: queda denegado por la regla implícita.
 
-> Ver evidencia: [16_politicas_fortigate.png](screenshots/16_politicas_fortigate.png)
+> Ver evidencia: [15_politicas_fortigate.png](screenshots/15_politicas_fortigate.png)
 
 ---
 
@@ -763,7 +691,7 @@ New-NetFirewallRule -DisplayName "HTTPS-443" -Direction Inbound -Protocol TCP -L
 <tr><td>Institución</td><td>ITLA — Instituto Tecnológico de Las Américas</td></tr>
 <tr><td>Estudiante</td><td>Arlene Fernández Herrera</td></tr>
 <tr><td>Matrícula</td><td>2025-0730</td></tr>
-<tr><td>Servidor</td><td>WEB-CAJA · 10.7.30.139 · LAN del Web Server (VLAN 30)</td></tr>
+<tr><td>Servidor</td><td>WEB-CAJA · 10.7.30.139 · LAN del Web Server (port3)</td></tr>
 </table></div></main>
 <footer>Página de demostración con fines académicos. No es un sistema de producción.</footer>
 </body>
@@ -796,7 +724,7 @@ Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -in 22,443,3389
 ```
 Deben aparecer los puertos `22`, `443` y `3389`. El Web Server se administra con el usuario local `Administrator`.
 
-> Ver evidencia: [17_web_caja_https.png](screenshots/17_web_caja_https.png), [18_web_rdp_ssh.png](screenshots/18_web_rdp_ssh.png)
+> Ver evidencia: [16_web_caja_https.png](screenshots/16_web_caja_https.png), [17_web_rdp_ssh.png](screenshots/17_web_rdp_ssh.png)
 
 ---
 
@@ -910,7 +838,7 @@ $c = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*jum
 Export-Certificate -Cert $c -FilePath C:\certs\jump-srv.cer
 ```
 
-> Ver evidencia: [19_jump_dominio.png](screenshots/19_jump_dominio.png), [20_jump_rds_despliegue.png](screenshots/20_jump_rds_despliegue.png), [21_jump_gateway_certificados.png](screenshots/21_jump_gateway_certificados.png)
+> Ver evidencia: [18_jump_dominio.png](screenshots/18_jump_dominio.png), [19_jump_rds_despliegue.png](screenshots/19_jump_rds_despliegue.png), [20_jump_gateway_certificados.png](screenshots/20_jump_gateway_certificados.png)
 
 ---
 
@@ -954,7 +882,7 @@ Descargar el instalador MSI de 64 bits desde el sitio oficial de PuTTY (con la p
 
 > **Resultado:** el usuario sin privilegios solo ve el servicio **Web**; el usuario con privilegios ve **Web, PuTTY y RDP**. El navegador abre directamente el Sistema de Caja del Web Server.
 
-> Ver evidencia: [22_remoteapp_programas.png](screenshots/22_remoteapp_programas.png), [23_remoteapp_asignacion.png](screenshots/23_remoteapp_asignacion.png)
+> Ver evidencia: [21_remoteapp_programas.png](screenshots/21_remoteapp_programas.png), [22_remoteapp_asignacion.png](screenshots/22_remoteapp_asignacion.png)
 
 ---
 
@@ -984,7 +912,7 @@ Publish-RDWebClientPackage -Type Production -Latest
 | RemoteApp Web Client (HTML5) | `https://jump-srv.itla.local/RDWeb/webclient/index.html` |
 | RD Web Access (RemoteApp con archivo `.rdp`) | `https://jump-srv.itla.local/RDWeb` |
 
-> Ver evidencia: [24_webclient_publicado.png](screenshots/24_webclient_publicado.png)
+> Ver evidencia: [23_webclient_publicado.png](screenshots/23_webclient_publicado.png)
 
 ---
 
@@ -1016,7 +944,7 @@ Descargar e instalar **FortiClient VPN** (versión gratuita) desde el sitio de F
 
 Guardar. Las credenciales se piden al conectar: `basico` en el Cliente Básico y `privilegiado` en el Cliente Privilegiado (contraseña `Lab12345!`).
 
-> Ver evidencia: [25_forticlient_config.png](screenshots/25_forticlient_config.png)
+> Ver evidencia: [24_forticlient_config.png](screenshots/24_forticlient_config.png)
 
 ---
 
@@ -1034,7 +962,7 @@ Con los roles, módulos e instaladores ya instalados, se cierra la salida de los
 Remove-DnsServerForwarder -IPAddress 8.8.8.8 -Force
 ```
 
-> Ver evidencia: [26_politica_temporal_eliminada.png](screenshots/26_politica_temporal_eliminada.png)
+> Ver evidencia: [25_politica_temporal_eliminada.png](screenshots/25_politica_temporal_eliminada.png)
 
 ---
 
@@ -1053,7 +981,7 @@ Test-NetConnection 10.7.30.139 -Port 443     # Web Server: sin acceso directo
 
 Abrir `https://jump-srv.itla.local/RDWeb/webclient/index.html`, iniciar sesión con `ITLA\basico`: solo aparece **Sistema de Caja (Web)**. Al abrirlo, el navegador del Jump Server muestra la página del Sistema de Caja (Edge advierte del certificado autofirmado: **Avanzado → Continuar**).
 
-> Ver evidencia: [27_vpn_basico_conectado.png](screenshots/27_vpn_basico_conectado.png), [28_webclient_basico.png](screenshots/28_webclient_basico.png), [29_ssh_basico_denegado.png](screenshots/29_ssh_basico_denegado.png)
+> Ver evidencia: [26_vpn_basico_conectado.png](screenshots/26_vpn_basico_conectado.png), [27_webclient_basico.png](screenshots/27_webclient_basico.png), [28_ssh_basico_denegado.png](screenshots/28_ssh_basico_denegado.png)
 
 **17.2 — Usuario con privilegios (Cliente Privilegiado)**
 
@@ -1066,7 +994,7 @@ Abrir el Web Client e iniciar sesión con `ITLA\privilegiado`: aparecen **Sistem
 
 **RemoteApp nativo (RD Web Access):** abrir `https://jump-srv.itla.local/RDWeb`, iniciar sesión con `ITLA\privilegiado` y abrir `PuTTY` o `Escritorio Remoto (RDP)`: se descarga un archivo `.rdp` y la aplicación se abre como RemoteApp a través de RD Gateway.
 
-> Ver evidencia: [30_webclient_privilegiado.png](screenshots/30_webclient_privilegiado.png), [31_putty_ssh_web.png](screenshots/31_putty_ssh_web.png), [32_rdp_remoteapp_web.png](screenshots/32_rdp_remoteapp_web.png), [33_rdweb_remoteapp_nativo.png](screenshots/33_rdweb_remoteapp_nativo.png)
+> Ver evidencia: [29_webclient_privilegiado.png](screenshots/29_webclient_privilegiado.png), [30_putty_ssh_web.png](screenshots/30_putty_ssh_web.png), [31_rdp_remoteapp_web.png](screenshots/31_rdp_remoteapp_web.png), [32_rdweb_remoteapp_nativo.png](screenshots/32_rdweb_remoteapp_nativo.png)
 
 **17.3 — El Jump Server solo llega al Web Server por HTTPS, RDP y SSH**
 
@@ -1082,14 +1010,14 @@ ping 10.7.30.139                             # debe fallar
 Test-NetConnection 8.8.8.8 -Port 443         # Internet: debe fallar
 ```
 
-> Ver evidencia: [34_jump_a_web_puertos.png](screenshots/34_jump_a_web_puertos.png)
+> Ver evidencia: [33_jump_a_web_puertos.png](screenshots/33_jump_a_web_puertos.png)
 
 **17.4 — Registros del FortiGate**
 
 * `Log & Report → Forward Traffic`: filtrar por las políticas `Deny-SSH-VPN-Basico`, `VPN-Basico-Jump`, `VPN-Privilegiado-Jump`, `Jump-to-Web` y `Bloqueo-Jump-Web-Resto`.
 * `Log & Report → System Events → VPN Events`: conexión de `basico` y de `privilegiado` a `VPN-Jump`.
 
-> Ver evidencia: [35_logs_fortigate.png](screenshots/35_logs_fortigate.png)
+> Ver evidencia: [34_logs_fortigate.png](screenshots/34_logs_fortigate.png)
 
 **17.5 — Si la VPN no conecta**
 
@@ -1106,41 +1034,40 @@ Numeradas en el orden en que se toman durante el procedimiento.
 
 | # | Archivo | Paso | Descripción |
 |---|---|---|---|
-| 01 | [`01_switch_usuarios.png`](screenshots/01_switch_usuarios.png) | 2.1 | SW-USUARIOS: `show vlan brief` y `show interfaces trunk`. |
-| 02 | [`02_switch_servidores.png`](screenshots/02_switch_servidores.png) | 2.2 | SW-SERVIDORES: `show vlan brief` y `show interfaces trunk`. |
-| 03 | [`03_cisco_interfaces.png`](screenshots/03_cisco_interfaces.png) | 3 | `show ip interface brief` del Router Cisco. |
-| 04 | [`04_cisco_dhcp_nat.png`](screenshots/04_cisco_dhcp_nat.png) | 3 | DHCP y NAT del Router Cisco. |
-| 05 | [`05_cli_acceso_fortigate.png`](screenshots/05_cli_acceso_fortigate.png) | 4 | CLI del FortiGate con la config inicial de `port1` (202.50.73.254/24). |
-| 06 | [`06_interfaces_fortigate.png`](screenshots/06_interfaces_fortigate.png) | 5 | `Network → Interfaces`: port1, port2, VLAN20 y VLAN30. |
-| 07 | [`07_mtu_fortigate.png`](screenshots/07_mtu_fortigate.png) | 5.4 | MTU y MSS de las sub-interfaces. |
-| 08 | [`08_ruta_dns_fortigate.png`](screenshots/08_ruta_dns_fortigate.png) | 6 | DNS y ruta por defecto hacia `202.50.73.2`. |
-| 09 | [`09_clientes_dhcp.png`](screenshots/09_clientes_dhcp.png) | 7.1 | Clientes con IP por DHCP y ping a su gateway. |
-| 10 | [`10_servidores_red.png`](screenshots/10_servidores_red.png) | 7.2 | Servidores con IP estática y ping a su gateway. |
-| 11 | [`11_objetos_fortigate.png`](screenshots/11_objetos_fortigate.png) | 8.1 | Objetos y grupo de direcciones. |
-| 12 | [`12_usuarios_grupos_fortigate.png`](screenshots/12_usuarios_grupos_fortigate.png) | 8.2–8.3 | Usuarios y grupos de la VPN. |
-| 13 | [`13_vpn_asistente_fortigate.png`](screenshots/13_vpn_asistente_fortigate.png) | 9 | Asistente de VPN: pasos 1 y 2. |
-| 14 | [`14_vpn_asistente_politica_fortigate.png`](screenshots/14_vpn_asistente_politica_fortigate.png) | 9 | Asistente de VPN: pasos 3 y 4. |
-| 15 | [`15_vpn_fase1_fortigate.png`](screenshots/15_vpn_fase1_fortigate.png) | 9 | `show vpn ipsec phase1-interface VPN-Jump`. |
-| 16 | [`16_politicas_fortigate.png`](screenshots/16_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden. |
-| 17 | [`17_web_caja_https.png`](screenshots/17_web_caja_https.png) | 11 | Sistema de Caja por HTTPS en el Web Server. |
-| 18 | [`18_web_rdp_ssh.png`](screenshots/18_web_rdp_ssh.png) | 11 | Puertos 22, 443 y 3389 escuchando en el Web Server. |
-| 19 | [`19_jump_dominio.png`](screenshots/19_jump_dominio.png) | 12.1–12.3 | Dominio `itla.local` con los usuarios y grupos. |
-| 20 | [`20_jump_rds_despliegue.png`](screenshots/20_jump_rds_despliegue.png) | 12.5 | Despliegue de Servicios de Escritorio Remoto en Server Manager. |
-| 21 | [`21_jump_gateway_certificados.png`](screenshots/21_jump_gateway_certificados.png) | 12.6–12.7 | RD Gateway y certificados del despliegue. |
-| 22 | [`22_remoteapp_programas.png`](screenshots/22_remoteapp_programas.png) | 13.3 | Programas publicados en la colección `Jump-Apps`. |
-| 23 | [`23_remoteapp_asignacion.png`](screenshots/23_remoteapp_asignacion.png) | 13.4 | Asignación de usuarios por programa. |
-| 24 | [`24_webclient_publicado.png`](screenshots/24_webclient_publicado.png) | 14 | Web Client publicado y página de inicio de sesión. |
-| 25 | [`25_forticlient_config.png`](screenshots/25_forticlient_config.png) | 15.2 | Conexión `VPN-Jump` en FortiClient. |
-| 26 | [`26_politica_temporal_eliminada.png`](screenshots/26_politica_temporal_eliminada.png) | 16 | Lista de políticas sin `Instalaciones-Temp`. |
-| 27 | [`27_vpn_basico_conectado.png`](screenshots/27_vpn_basico_conectado.png) | 17.1 | VPN conectada con `basico` e IP asignada. |
-| 28 | [`28_webclient_basico.png`](screenshots/28_webclient_basico.png) | 17.1 | Web Client del usuario sin privilegios: solo el servicio Web. |
-| 29 | [`29_ssh_basico_denegado.png`](screenshots/29_ssh_basico_denegado.png) | 17.1 | SSH del usuario sin privilegios denegado. |
-| 30 | [`30_webclient_privilegiado.png`](screenshots/30_webclient_privilegiado.png) | 17.2 | Web Client del usuario con privilegios: Web, PuTTY y RDP. |
-| 31 | [`31_putty_ssh_web.png`](screenshots/31_putty_ssh_web.png) | 17.2 | PuTTY RemoteApp conectado por SSH al Web Server. |
-| 32 | [`32_rdp_remoteapp_web.png`](screenshots/32_rdp_remoteapp_web.png) | 17.2 | RDP RemoteApp conectado al Web Server. |
-| 33 | [`33_rdweb_remoteapp_nativo.png`](screenshots/33_rdweb_remoteapp_nativo.png) | 17.2 | RD Web Access con RemoteApp nativo (`.rdp`). |
-| 34 | [`34_jump_a_web_puertos.png`](screenshots/34_jump_a_web_puertos.png) | 17.3 | Puertos permitidos y bloqueados del Jump Server hacia el Web Server. |
-| 35 | [`35_logs_fortigate.png`](screenshots/35_logs_fortigate.png) | 17.4 | Forward Traffic y VPN Events del FortiGate. |
+| 01 | [`01_switch_usuarios.png`](screenshots/01_switch_usuarios.png) | 2 | SW-USUARIOS: `show vlan brief` y `show interfaces trunk`. |
+| 02 | [`02_cisco_interfaces.png`](screenshots/02_cisco_interfaces.png) | 3 | `show ip interface brief` del Router Cisco. |
+| 03 | [`03_cisco_dhcp_nat.png`](screenshots/03_cisco_dhcp_nat.png) | 3 | DHCP y NAT del Router Cisco. |
+| 04 | [`04_cli_acceso_fortigate.png`](screenshots/04_cli_acceso_fortigate.png) | 4 | CLI del FortiGate con la config inicial de `port1` (202.50.73.254/24). |
+| 05 | [`05_interfaces_fortigate.png`](screenshots/05_interfaces_fortigate.png) | 5.1 | `Network → Interfaces`: port1, port2 y port3. |
+| 06 | [`06_mtu_fortigate.png`](screenshots/06_mtu_fortigate.png) | 5.2 | MTU y MSS de las interfaces. |
+| 07 | [`07_ruta_dns_fortigate.png`](screenshots/07_ruta_dns_fortigate.png) | 6 | DNS y ruta por defecto hacia `202.50.73.2`. |
+| 08 | [`08_clientes_dhcp.png`](screenshots/08_clientes_dhcp.png) | 7.1 | Clientes con IP por DHCP y ping a su gateway. |
+| 09 | [`09_servidores_red.png`](screenshots/09_servidores_red.png) | 7.2 | Servidores con IP estática y ping a su gateway. |
+| 10 | [`10_objetos_fortigate.png`](screenshots/10_objetos_fortigate.png) | 8.1 | Objetos y grupo de direcciones. |
+| 11 | [`11_usuarios_grupos_fortigate.png`](screenshots/11_usuarios_grupos_fortigate.png) | 8.2–8.3 | Usuarios y grupos de la VPN. |
+| 12 | [`12_vpn_asistente_fortigate.png`](screenshots/12_vpn_asistente_fortigate.png) | 9 | Asistente de VPN: pasos 1 y 2. |
+| 13 | [`13_vpn_asistente_politica_fortigate.png`](screenshots/13_vpn_asistente_politica_fortigate.png) | 9 | Asistente de VPN: pasos 3 y 4. |
+| 14 | [`14_vpn_fase1_fortigate.png`](screenshots/14_vpn_fase1_fortigate.png) | 9 | `show vpn ipsec phase1-interface VPN-Jump`. |
+| 15 | [`15_politicas_fortigate.png`](screenshots/15_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden. |
+| 16 | [`16_web_caja_https.png`](screenshots/16_web_caja_https.png) | 11 | Sistema de Caja por HTTPS en el Web Server. |
+| 17 | [`17_web_rdp_ssh.png`](screenshots/17_web_rdp_ssh.png) | 11 | Puertos 22, 443 y 3389 escuchando en el Web Server. |
+| 18 | [`18_jump_dominio.png`](screenshots/18_jump_dominio.png) | 12.1–12.3 | Dominio `itla.local` con los usuarios y grupos. |
+| 19 | [`19_jump_rds_despliegue.png`](screenshots/19_jump_rds_despliegue.png) | 12.5 | Despliegue de Servicios de Escritorio Remoto en Server Manager. |
+| 20 | [`20_jump_gateway_certificados.png`](screenshots/20_jump_gateway_certificados.png) | 12.6–12.7 | RD Gateway y certificados del despliegue. |
+| 21 | [`21_remoteapp_programas.png`](screenshots/21_remoteapp_programas.png) | 13.3 | Programas publicados en la colección `Jump-Apps`. |
+| 22 | [`22_remoteapp_asignacion.png`](screenshots/22_remoteapp_asignacion.png) | 13.4 | Asignación de usuarios por programa. |
+| 23 | [`23_webclient_publicado.png`](screenshots/23_webclient_publicado.png) | 14 | Web Client publicado y página de inicio de sesión. |
+| 24 | [`24_forticlient_config.png`](screenshots/24_forticlient_config.png) | 15.2 | Conexión `VPN-Jump` en FortiClient. |
+| 25 | [`25_politica_temporal_eliminada.png`](screenshots/25_politica_temporal_eliminada.png) | 16 | Lista de políticas sin `Instalaciones-Temp`. |
+| 26 | [`26_vpn_basico_conectado.png`](screenshots/26_vpn_basico_conectado.png) | 17.1 | VPN conectada con `basico` e IP asignada. |
+| 27 | [`27_webclient_basico.png`](screenshots/27_webclient_basico.png) | 17.1 | Web Client del usuario sin privilegios: solo el servicio Web. |
+| 28 | [`28_ssh_basico_denegado.png`](screenshots/28_ssh_basico_denegado.png) | 17.1 | SSH del usuario sin privilegios denegado. |
+| 29 | [`29_webclient_privilegiado.png`](screenshots/29_webclient_privilegiado.png) | 17.2 | Web Client del usuario con privilegios: Web, PuTTY y RDP. |
+| 30 | [`30_putty_ssh_web.png`](screenshots/30_putty_ssh_web.png) | 17.2 | PuTTY RemoteApp conectado por SSH al Web Server. |
+| 31 | [`31_rdp_remoteapp_web.png`](screenshots/31_rdp_remoteapp_web.png) | 17.2 | RDP RemoteApp conectado al Web Server. |
+| 32 | [`32_rdweb_remoteapp_nativo.png`](screenshots/32_rdweb_remoteapp_nativo.png) | 17.2 | RD Web Access con RemoteApp nativo (`.rdp`). |
+| 33 | [`33_jump_a_web_puertos.png`](screenshots/33_jump_a_web_puertos.png) | 17.3 | Puertos permitidos y bloqueados del Jump Server hacia el Web Server. |
+| 34 | [`34_logs_fortigate.png`](screenshots/34_logs_fortigate.png) | 17.4 | Forward Traffic y VPN Events del FortiGate. |
 
 ---
 
@@ -1152,14 +1079,11 @@ Numeradas en el orden en que se toman durante el procedimiento.
 ├── screenshots/               ← capturas numeradas de cada configuración
 ├── scripts/
 │   ├── sw-usuarios.txt        ← switch de usuarios: VLAN 10 y trunk
-│   ├── sw-servidores.txt      ← switch de servidores: VLAN 20, VLAN 30 y trunk
 │   ├── cisco-base.txt         ← interfaces, VLAN 10, DHCP y NAT del router Cisco
 │   ├── fortigate-cli.txt      ← acceso inicial y MTU/MSS del FortiGate
 │   ├── web-server.ps1         ← Web Server: IIS HTTPS, RDP y SSH
 │   └── jump-server.ps1        ← Jump Server: dominio, usuarios y Web Client
 ├── running-configs/
 │   ├── sw-usuarios-running-config.txt
-│   ├── sw-servidores-running-config.txt
 │   ├── cisco-running-config.txt
 │   └── fortigate-running-config.conf
-```
