@@ -1,0 +1,60 @@
+enable
+configure terminal
+
+hostname R-CISCO
+no ip domain-lookup
+
+interface Ethernet0/0
+ description WAN hacia la Nube PNET
+ ip address 202.50.73.10 255.255.255.0
+ no shutdown
+exit
+
+interface Ethernet0/1
+ description Trunk hacia SW-USUARIOS
+ no ip address
+ no shutdown
+exit
+
+interface Ethernet0/1.10
+ description VLAN 10 - Usuarios
+ encapsulation dot1Q 10
+ ip address 10.7.30.2 255.255.255.128
+ ip tcp adjust-mss 1440
+exit
+
+ip dhcp excluded-address 10.7.30.1 10.7.30.9
+
+ip dhcp pool USUARIOS-V10
+ network 10.7.30.0 255.255.255.128
+ default-router 10.7.30.2
+ dns-server 8.8.8.8 8.8.4.4
+ lease 1
+exit
+
+end
+write memory
+
+
+
+configure terminal
+
+ip access-list extended NAT-USUARIOS
+ permit ip 10.7.30.0 0.0.0.127 any
+exit
+
+interface Ethernet0/0
+ ip nat outside
+exit
+
+interface Ethernet0/1.10
+ ip nat inside
+exit
+
+ip nat inside source list NAT-USUARIOS interface Ethernet0/0 overload
+ip route 0.0.0.0 0.0.0.0 202.50.73.2
+
+end
+write memory
+
+
