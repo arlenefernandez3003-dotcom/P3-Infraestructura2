@@ -1,0 +1,41 @@
+enable
+configure terminal
+
+hostname SW-USUARIOS
+no ip domain-lookup
+spanning-tree mode rapid-pvst
+
+vlan 10
+ name USUARIOS
+vlan 999
+ name BLACKHOLE
+exit
+
+interface Ethernet0/0
+ description Trunk hacia Router Cisco Et0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10
+ no shutdown
+exit
+
+interface range Ethernet0/1 - 2
+ description Cliente VPN
+ switchport mode access
+ switchport access vlan 10
+ switchport nonegotiate
+ spanning-tree portfast
+ no shutdown
+exit
+
+interface range Ethernet0/3 , Ethernet1/0 - 3
+ description Puerto sin uso
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+exit
+
+end
+write memory
