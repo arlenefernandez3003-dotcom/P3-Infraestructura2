@@ -1,0 +1,8 @@
+config system interface
+    edit "port1"
+        set mode static
+        set ip 202.50.73.254 255.255.255.0
+        set allowaccess https ssh ping
+        set role wan
+    next
+end
