@@ -31,6 +31,7 @@
    - [Paso 8. Objetos, usuarios y grupos del FortiGate](#paso-8-objetos-usuarios-y-grupos-del-fortigate)
    - [Paso 9. VPN L2TP sobre IPsec en el FortiGate (GUI)](#paso-9-vpn-l2tp-sobre-ipsec-en-el-fortigate-gui)
    - [Paso 10. Políticas de firewall](#paso-10-políticas-de-firewall)
+     - [10.1 Autenticación de Usuarios y Control de Acceso (ZTSA)](#101-autenticación-de-usuarios-y-control-de-acceso-ztsa)
    - [Paso 11. Web Server (Sistema de Caja)](#paso-11-web-server-sistema-de-caja)
    - [Paso 12. Jump Server: dominio, RDS y RD Gateway](#paso-12-jump-server-dominio-rds-y-rd-gateway)
    - [Paso 13. RemoteApp: colección, programas y usuarios](#paso-13-remoteapp-colección-programas-y-usuarios)
@@ -63,7 +64,7 @@ Esta práctica publica servicios de un **Jump Server** a usuarios remotos a trav
 > * Se usa **L2TP sobre IPsec con clave compartida (PSK)**. El IKEv2 nativo de Windows se descartó porque autentica con certificados y no admite clave compartida.
 > * Los usuarios se autentican con **MS-CHAPv2** contra el grupo local `VPN-Todos` del FortiGate.
 
-La configuración y demostración del **FortiGate se hace por GUI**, salvo el MTU/MSS de las interfaces (Paso 5.2) y el ajuste de la propuesta de cifrado de la VPN (Paso 9.2), que se hacen por CLI. El Router Cisco y el switch de usuarios se configuran por CLI; los servidores Windows y los clientes, con la consola y PowerShell.
+La configuración y demostración del **FortiGate se hace por GUI**, salvo el MTU/MSS de las interfaces (Paso 5.2), el ajuste de la propuesta de cifrado de la VPN (Paso 9.2) y el ajuste de la autenticación del portal cautivo (Paso 10.1), que se hacen por CLI. El Router Cisco y el switch de usuarios se configuran por CLI; los servidores Windows y los clientes, con la consola y PowerShell.
 
 ---
 
@@ -106,8 +107,8 @@ La configuración y demostración del **FortiGate se hace por GUI**, salvo el MT
 
   Política de comunicación:
   ┌───────────────────────────────────────────────────────────────────┐
-  │ VPN (sin privilegios) → Jump : solo HTTPS (RemoteApp Web Client)  │
-  │ VPN (con privilegios) → Jump : HTTPS, RDP y ping                  │
+  │ VPN (sin privilegios) → Jump : HTTP (portal) y HTTPS (Web Client) │
+  │ VPN (con privilegios) → Jump : HTTP, HTTPS, RDP y ping            │
   │ VPN (sin privilegios) → servidores : SSH DENEGADO (explícito)     │
   │ VPN → Web Server : sin acceso directo (solo vía Jump Server)      │
   │ Jump → Web Server : solo HTTPS, RDP y SSH                         │
@@ -159,8 +160,8 @@ La configuración y demostración del **FortiGate se hace por GUI**, salvo el MT
 | Origen | Destino | Servicio | Acción |
 |---|---|---|---|
 | VPN · usuario sin privilegios | Servidores (Jump y Web) | SSH | ⛔ Denegado (explícito) |
-| VPN · usuario sin privilegios | Jump Server | HTTPS | ✅ Permitido |
-| VPN · usuario con privilegios | Jump Server | HTTPS, RDP, ping | ✅ Permitido |
+| VPN · usuario sin privilegios | Jump Server | HTTP (portal de autenticación), HTTPS | ✅ Permitido |
+| VPN · usuario con privilegios | Jump Server | HTTP (portal de autenticación), HTTPS, RDP, ping | ✅ Permitido |
 | VPN | Web Server | Todos | ⛔ Sin ruta ni política |
 | Jump Server | Web Server | HTTPS, RDP, SSH | ✅ Permitido |
 | Jump Server | Web Server | Resto | ⛔ Denegado |
@@ -686,8 +687,8 @@ En FortiOS 7.0 el asistente de L2TP sobre IPsec crea **dos políticas**: una par
 |---|---|---|---|---|---|---|---|---|
 | 1 | *(creada por el asistente)* | `VPN-Jump` | `port1` | `all` | `all` | `L2TP` | ACCEPT | ❌ |
 | 2 | `Deny-SSH-VPN-Basico` | `l2t.root` | `port2`, `port3` | `Pool-VPN` + usuario `VPN-Basico` | `Servidores` | `SSH` | DENY | — |
-| 3 | `VPN-Basico-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTPS` | ACCEPT | ❌ |
-| 4 | `VPN-Privilegiado-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
+| 3 | `VPN-Basico-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTP`, `HTTPS` | ACCEPT | ❌ |
+| 4 | `VPN-Privilegiado-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTP`, `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
 | 5 | `Jump-to-Web` | `port2` | `port3` | `Srv-Jump` | `Srv-Web` | `HTTPS`, `RDP`, `SSH` | ACCEPT | ❌ |
 | 6 | `Bloqueo-Jump-Web-Resto` | `port2` | `port3` | `Srv-Jump` | `all` | `ALL` | DENY | — |
 | 7 | `Instalaciones-Temp` | `port2`, `port3` | `port1` | `Red-Jump`, `Red-Web` | `all` | `ALL` | ACCEPT | ✅ Outgoing Interface Address |
@@ -696,6 +697,7 @@ En FortiOS 7.0 el asistente de L2TP sobre IPsec crea **dos políticas**: una par
 
 * **`l2t.root`:** es la interfaz donde el FortiGate recibe el tráfico de los clientes L2TP ya autenticados. Aparece en la lista de interfaces al habilitar L2TP (Paso 9).
 * **Origen por usuario:** en las políticas 2 a 4, en el campo *Source* se selecciona el objeto `Pool-VPN` (el mismo rango que el objeto `VPN-Jump_range` del asistente) y, en la misma casilla, el grupo de usuarios indicado (`VPN-Basico` o `VPN-Privilegiado`). El FortiGate identifica al usuario por su autenticación PPP (MS-CHAPv2) del L2TP.
+* **Servicio `HTTP` en las políticas 3 y 4:** permite que el usuario llegue al portal de autenticación del firewall antes de abrir el RemoteApp. La justificación completa está en el apartado 10.1.
 * **Política 2 (DENY SSH):** debe quedar **por encima** de las políticas 3 y 4. En *Logging Options* activar **Log Violation Traffic**.
 * **Política 5 (`Jump-to-Web`):** en *Logging Options* activar **All Sessions**, como evidencia de que solo pasan HTTPS, RDP y SSH.
 * **Política 6:** en *Logging Options* activar **Log Violation Traffic**.
@@ -703,6 +705,33 @@ En FortiOS 7.0 el asistente de L2TP sobre IPsec crea **dos políticas**: una par
 * Entre el cliente VPN y la LAN del Web Server no hay política: queda denegado por la regla implícita.
 
 > Ver evidencia: [15_politicas_fortigate.png](screenshots/15_politicas_fortigate.png)
+
+#### 10.1 Autenticación de Usuarios y Control de Acceso (ZTSA)
+
+Para dar cumplimiento al requisito de aplicar políticas explícitas que restrinjan el acceso SSH dependiendo del usuario (usuario sin privilegios vs. usuario con privilegios), se implementó un control de acceso basado en identidad en el FortiGate.
+
+Dado que la topología utiliza una conexión VPN L2TP sobre IPsec nativa de Windows (la cual maneja la autenticación en capas inferiores), el FortiGate requiere validar la identidad del usuario a nivel de aplicación (Capa 7) para asociarlo a las políticas del firewall.
+
+Para lograr esto de manera efectiva:
+
+1. **Se habilitó el tráfico HTTP en las políticas de la VPN hacia el Jump Server** (políticas 3 y 4 del Paso 10). El portal de autenticación del firewall solo puede interceptar tráfico HTTP sin errores de certificado; por eso `HTTP` se agrega como servicio, junto a `HTTPS`, únicamente hacia `Srv-Jump`.
+2. **Se deshabilitó el redireccionamiento HTTPS seguro del portal cautivo** mediante CLI, para evitar bloqueos por políticas HSTS y cifrados no admitidos por la licencia de evaluación de FortiOS (script: [`scripts/fortigate-cli.txt`](scripts/fortigate-cli.txt)):
+
+   ```bash
+   config user setting
+       set auth-secure-http disable
+   end
+   ```
+
+3. **El usuario fuerza la aparición del portal cautivo** ingresando a la IP del Jump Server vía HTTP (`http://10.7.30.131`). Una vez el FortiGate registra las credenciales, activa la política restrictiva correspondiente (`VPN-Basico` o `VPN-Privilegiado`).
+
+![Portal cautivo de autenticación del FortiGate](screenshots/35_portal_cautivo_fortigate.png)
+
+Una vez completada esta validación, el usuario es redirigido a la colección de RemoteApp, donde también se aplican restricciones a nivel de IIS.
+
+> **Justificación del HTTP:** el portal de autenticación se muestra por HTTP porque el FortiGate de evaluación no puede presentar el portal por HTTPS a los navegadores modernos (certificado y cifrados no admitidos). El tráfico HTTP **viaja dentro del túnel L2TP sobre IPsec**, por lo que las credenciales no circulan en claro por la red pública, y el servicio `HTTP` solo se permite hacia el Jump Server (`Srv-Jump`), nunca hacia el Web Server. Esta configuración es válida para un laboratorio, no para producción.
+
+> Ver evidencia: [35_portal_cautivo_fortigate.png](screenshots/35_portal_cautivo_fortigate.png)
 
 ---
 
@@ -1060,7 +1089,7 @@ Test-NetConnection 10.7.30.131 -Port 22      # SSH: debe fallar (política expl�
 Test-NetConnection 10.7.30.139 -Port 443     # Web Server: sin acceso directo
 ```
 
-Abrir `https://jump-srv.itla.local/RDWeb/webclient/index.html`, iniciar sesión con `ITLA\basico`: solo aparece **Sistema de Caja (Web)**. Al abrirlo, el navegador del Jump Server muestra la página del Sistema de Caja (Edge advierte del certificado autofirmado: **Avanzado → Continuar**).
+Antes de abrir el Web Client, validar la identidad en el portal de autenticación del firewall: abrir `http://10.7.30.131` e iniciar sesión con el usuario `basico` (apartado 10.1). Luego abrir `https://jump-srv.itla.local/RDWeb/webclient/index.html`, iniciar sesión con `ITLA\basico`: solo aparece **Sistema de Caja (Web)**. Al abrirlo, el navegador del Jump Server muestra la página del Sistema de Caja (Edge advierte del certificado autofirmado: **Avanzado → Continuar**).
 
 > Ver evidencia: [26_vpn_basico_conectado.png](screenshots/26_vpn_basico_conectado.png), [27_webclient_basico.png](screenshots/27_webclient_basico.png), [28_ssh_basico_denegado.png](screenshots/28_ssh_basico_denegado.png)
 
@@ -1072,7 +1101,7 @@ Conectar la VPN nativa con el usuario `privilegiado`:
 rasdial "VPN-Jump" privilegiado "Lab12345!"
 ```
 
-Abrir el Web Client e iniciar sesión con `ITLA\privilegiado`: aparecen **Sistema de Caja (Web)**, **PuTTY** y **Escritorio Remoto (RDP)**.
+Validar la identidad en el portal de autenticación (`http://10.7.30.131`, usuario `privilegiado`), abrir el Web Client e iniciar sesión con `ITLA\privilegiado`: aparecen **Sistema de Caja (Web)**, **PuTTY** y **Escritorio Remoto (RDP)**.
 
 * **PuTTY:** conectar por SSH a `10.7.30.139` con el usuario `Administrator`. Debe abrir la sesión en el Web Server.
 * **Escritorio Remoto (RDP):** conectar a `10.7.30.139` con el usuario `Administrator`. Debe abrir el escritorio del Web Server.
@@ -1132,7 +1161,7 @@ diagnose vpn ike gateway list
 
 ## 4. Capturas de Pantalla
 
-Numeradas en el orden en que se toman durante el procedimiento.
+Numeradas en el orden en que se toman durante el procedimiento. La captura 35 se tomó después de completar el resto y por eso va al final de la lista, aunque corresponde al Paso 10.1.
 
 | # | Archivo | Paso | Descripción |
 |---|---|---|---|
@@ -1150,7 +1179,7 @@ Numeradas en el orden en que se toman durante el procedimiento.
 | 12 | [`12_vpn_asistente_fortigate.png`](screenshots/12_vpn_asistente_fortigate.png) | 9.1 | Asistente de VPN con la plantilla Native (Windows Native): pasos 1 y 2. |
 | 13 | [`13_vpn_asistente_politica_fortigate.png`](screenshots/13_vpn_asistente_politica_fortigate.png) | 9.1 | Asistente de VPN: Policy & Routing y resumen con Fase 1, Fase 2, L2TP y Address en verde. |
 | 14 | [`14_vpn_fase1_fortigate.png`](screenshots/14_vpn_fase1_fortigate.png) | 9.2 | `show vpn ipsec phase1-interface`, `phase2-interface` y `show vpn l2tp` con la propuesta DES. |
-| 15 | [`15_politicas_fortigate.png`](screenshots/15_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden, con `l2t.root` como interfaz de entrada. |
+| 15 | [`15_politicas_fortigate.png`](screenshots/15_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden, con `l2t.root` como interfaz de entrada y `HTTP` en las políticas 3 y 4. |
 | 16 | [`16_web_caja_https.png`](screenshots/16_web_caja_https.png) | 11 | Sistema de Caja por HTTPS en el Web Server. |
 | 17 | [`17_web_rdp_ssh.png`](screenshots/17_web_rdp_ssh.png) | 11 | Puertos 22, 443 y 3389 escuchando en el Web Server. |
 | 18 | [`18_jump_dominio.png`](screenshots/18_jump_dominio.png) | 12.1–12.3 | Dominio `itla.local` con los usuarios y grupos. |
@@ -1170,6 +1199,7 @@ Numeradas en el orden en que se toman durante el procedimiento.
 | 32 | [`32_rdweb_remoteapp_nativo.png`](screenshots/32_rdweb_remoteapp_nativo.png) | 17.2 | RD Web Access con RemoteApp nativo (`.rdp`). |
 | 33 | [`33_jump_a_web_puertos.png`](screenshots/33_jump_a_web_puertos.png) | 17.3 | Puertos permitidos y bloqueados del Jump Server hacia el Web Server. |
 | 34 | [`34_logs_fortigate.png`](screenshots/34_logs_fortigate.png) | 17.4 | Forward Traffic y VPN Events del FortiGate. |
+| 35 | [`35_portal_cautivo_fortigate.png`](screenshots/35_portal_cautivo_fortigate.png) | 10.1 | Portal cautivo de autenticación del FortiGate al abrir `http://10.7.30.131`. |
 
 ---
 
@@ -1182,7 +1212,7 @@ Numeradas en el orden en que se toman durante el procedimiento.
 ├── scripts/
 │   ├── sw-usuarios.txt        ← switch de usuarios: VLAN 10 y trunk
 │   ├── cisco-base.txt         ← interfaces, VLAN 10, DHCP y NAT del router Cisco
-│   ├── fortigate-cli.txt      ← acceso inicial, MTU/MSS y propuesta DES de la VPN
+│   ├── fortigate-cli.txt      ← acceso inicial, MTU/MSS, propuesta DES de la VPN y auth-secure-http
 │   ├── web-server.ps1         ← Web Server: IIS HTTPS, RDP y SSH
 │   ├── jump-server.ps1        ← Jump Server: dominio, usuarios y Web Client
 │   └── cliente-windows-vpn.ps1 ← clientes: VPN nativa L2TP/IPsec (DES) y ruta
