@@ -725,8 +725,6 @@ Para lograr esto de manera efectiva:
 
 3. **El usuario fuerza la aparición del portal cautivo** ingresando a la IP del Jump Server vía HTTP (`http://10.7.30.131`). Una vez el FortiGate registra las credenciales, activa la política restrictiva correspondiente (`VPN-Basico` o `VPN-Privilegiado`).
 
-[Portal cautivo de autenticación del FortiGate](screenshots/35_portal_cautivo_fortigate.png)
-
 Una vez completada esta validación, el usuario es redirigido a la colección de RemoteApp, donde también se aplican restricciones a nivel de IIS.
 
 > **Justificación del HTTP:** el portal de autenticación se muestra por HTTP porque el FortiGate de evaluación no puede presentar el portal por HTTPS a los navegadores modernos (certificado y cifrados no admitidos). El tráfico HTTP **viaja dentro del túnel L2TP sobre IPsec**, por lo que las credenciales no circulan en claro por la red pública, y el servicio `HTTP` solo se permite hacia el Jump Server (`Srv-Jump`), nunca hacia el Web Server. Esta configuración es válida para un laboratorio, no para producción.
