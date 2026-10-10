@@ -1,4 +1,4 @@
-# FortiGate 7.0.3 — VPN de Acceso Remoto, Jump Server y RDS RemoteApp
+# FortiGate 7.0.3 — VPN de Acceso Remoto (L2TP sobre IPsec), Jump Server y RDS RemoteApp
 
 ### Arlene Fernández Herrera · Matrícula: 2025-0730
 
@@ -29,13 +29,13 @@
    - [Paso 6. Ruta por defecto y DNS](#paso-6-ruta-por-defecto-y-dns)
    - [Paso 7. Conectividad de Clientes y Servidores](#paso-7-conectividad-de-clientes-y-servidores)
    - [Paso 8. Objetos, usuarios y grupos del FortiGate](#paso-8-objetos-usuarios-y-grupos-del-fortigate)
-   - [Paso 9. VPN de acceso remoto en el FortiGate (GUI)](#paso-9-vpn-de-acceso-remoto-en-el-fortigate-gui)
+   - [Paso 9. VPN L2TP sobre IPsec en el FortiGate (GUI)](#paso-9-vpn-l2tp-sobre-ipsec-en-el-fortigate-gui)
    - [Paso 10. Políticas de firewall](#paso-10-políticas-de-firewall)
    - [Paso 11. Web Server (Sistema de Caja)](#paso-11-web-server-sistema-de-caja)
    - [Paso 12. Jump Server: dominio, RDS y RD Gateway](#paso-12-jump-server-dominio-rds-y-rd-gateway)
    - [Paso 13. RemoteApp: colección, programas y usuarios](#paso-13-remoteapp-colección-programas-y-usuarios)
    - [Paso 14. RemoteApp Web Client](#paso-14-remoteapp-web-client)
-   - [Paso 15. Clientes Windows: FortiClient, certificado y hosts](#paso-15-clientes-windows-forticlient-certificado-y-hosts)
+   - [Paso 15. Clientes Windows: VPN nativa, certificado y hosts](#paso-15-clientes-windows-vpn-nativa-certificado-y-hosts)
    - [Paso 16. Retirar el acceso temporal a Internet](#paso-16-retirar-el-acceso-temporal-a-internet)
    - [Paso 17. Pruebas de verificación](#paso-17-pruebas-de-verificación)
 4. [Capturas de Pantalla](#4-capturas-de-pantalla)
@@ -45,7 +45,7 @@
 
 ## 1. Objetivo del Laboratorio
 
-Esta práctica publica servicios de un **Jump Server** a usuarios remotos a través de una **VPN IPsec de acceso remoto** en un **FortiGate (v7.0.3)**, y limita lo que cada usuario puede hacer:
+Esta práctica publica servicios de un **Jump Server** a usuarios remotos a través de una **VPN de acceso remoto L2TP sobre IPsec** en un **FortiGate (v7.0.3)**, y limita lo que cada usuario puede hacer:
 
 * La **VPN solo da acceso al Jump Server**. Ningún usuario VPN llega directo al Web Server.
 * El **Jump Server solo llega al Web Server por HTTPS, RDP y SSH**.
@@ -53,8 +53,17 @@ Esta práctica publica servicios de un **Jump Server** a usuarios remotos a trav
   * **Usuario sin privilegios:** solo el servicio **Web** (navegador hacia el Sistema de Caja). Además tiene una **política explícita** en el FortiGate que **deniega SSH** hacia los servidores.
   * **Usuario con privilegios:** servicio **Web**, **PuTTY** (SSH) y **RDP** (Conexión a Escritorio Remoto) hacia el Web Server.
 * El **equipo de red** (Router Cisco) es el gateway de la **VLAN 10** de los usuarios, entrega **DHCP** y hace **NAT** hacia el ISP.
+* Los usuarios se conectan a la VPN con el **cliente VPN nativo de Windows**, sin FortiClient (ver la nota siguiente).
 
-Toda la configuración y demostración del **FortiGate se hace por GUI**. El Router Cisco y el switch de usuarios se configuran por CLI; los servidores Windows, con la consola y PowerShell.
+> **Por qué se usa el cliente nativo de Windows y L2TP sobre IPsec:**
+>
+> * El FortiGate de este laboratorio opera con **cifrado bajo**: sin licencia completa solo ofrece **DES**. El selector de propuestas del túnel solo muestra variantes `des-*`.
+> * **FortiClient** no permite fijar DES en la negociación, así que no puede establecer el túnel contra este FortiGate.
+> * El cliente VPN **nativo de Windows** sí permite elegir los algoritmos: el cmdlet `Set-VpnConnectionIPsecConfiguration` acepta DES, los grupos Diffie-Hellman 2 y 14 y MD5, SHA1 o SHA256, y aplica a conexiones L2TP e IKEv2.
+> * Se usa **L2TP sobre IPsec con clave compartida (PSK)**. El IKEv2 nativo de Windows se descartó porque autentica con certificados y no admite clave compartida.
+> * Los usuarios se autentican con **MS-CHAPv2** contra el grupo local `VPN-Todos` del FortiGate.
+
+La configuración y demostración del **FortiGate se hace por GUI**, salvo el MTU/MSS de las interfaces (Paso 5.2) y el ajuste de la propuesta de cifrado de la VPN (Paso 9.2), que se hacen por CLI. El Router Cisco y el switch de usuarios se configuran por CLI; los servidores Windows y los clientes, con la consola y PowerShell.
 
 ---
 
@@ -92,8 +101,8 @@ Toda la configuración y demostración del **FortiGate se hace por GUI**. El Rou
              └──────────┘  └──────────┘
              VLAN 10 · DHCP
 
-   ┄┄┄ VPN de acceso remoto (IPsec) ┄┄┄  Cliente ──► FortiGate 202.50.73.254
-        IP asignada al cliente: 10.7.30.145 – 10.7.30.150
+   ┄┄┄ VPN de acceso remoto (L2TP sobre IPsec) ┄┄┄  Cliente ──► FortiGate 202.50.73.254
+        Cliente VPN: nativo de Windows · IP asignada: 10.7.30.145 – 10.7.30.150
 
   Política de comunicación:
   ┌───────────────────────────────────────────────────────────────────┐
@@ -130,8 +139,8 @@ Toda la configuración y demostración del **FortiGate se hace por GUI**. El Rou
 | **FortiGate** (port1) | FortiOS 7.0.3 | 202.50.73.254 | /24 | 202.50.73.2 | Estática | WAN y servidor VPN |
 | **FortiGate** (port2) | FortiOS 7.0.3 | 10.7.30.130 | /29 | — | Estática | Gateway del Jump Server |
 | **FortiGate** (port3) | FortiOS 7.0.3 | 10.7.30.138 | /29 | — | Estática | Gateway del Web Server |
-| **Cliente Básico** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario sin privilegios |
-| **Cliente Privilegiado** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario con privilegios |
+| **Cliente Básico** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario sin privilegios · cliente VPN nativo |
+| **Cliente Privilegiado** | Windows 10 | 10.7.30.10 – .120 (rango) | /25 | 10.7.30.2 | **DHCP** | Usuario con privilegios · cliente VPN nativo |
 | **Jump Server** (`JUMP-SRV`) | Windows Server 2022 | 10.7.30.131 | /29 | 10.7.30.130 | Estática | Dominio, RDS, RD Web, RD Gateway |
 | **Web Server** (`WEB-CAJA`) | Windows Server 2022 | 10.7.30.139 | /29 | 10.7.30.138 | Estática | Sistema de Caja: HTTPS, RDP y SSH |
 
@@ -335,6 +344,7 @@ write memory
 ```
 
 > El NAT es necesario porque el FortiGate no tiene ruta hacia `10.7.30.0/25`: los clientes llegan a `202.50.73.254` con la IP `202.50.73.10`. El Router Cisco **no** tiene ruta hacia las LAN de los servidores: solo se alcanzan por la VPN.
+> Como los dos clientes salen con la misma IP pública (`202.50.73.10`), el túnel del FortiGate necesita `net-device enable` (Paso 9.2).
 
 **Verificación:**
 ```bash
@@ -555,11 +565,13 @@ ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 
 ---
 
-### Paso 9. VPN de acceso remoto en el FortiGate (GUI)
+### Paso 9. VPN L2TP sobre IPsec en el FortiGate (GUI)
 
-> **Requisito:** los clientes usan **FortiClient** (Windows), que propone cifrado AES. El FortiGate debe tener licencia completa. Si el equipo opera con cifrado bajo (solo DES), el cliente de la VPN debe ser Ubuntu con `vpnc` y el cifrado débil habilitado; el Web Client y los RemoteApp funcionan igual desde Firefox.
+> **Requisito:** el FortiGate opera con cifrado bajo (solo DES), por eso el túnel es **L2TP sobre IPsec** y el cliente es el **VPN nativo de Windows**, que sí puede fijar DES. FortiClient no se usa (ver la nota del apartado 1).
 
-**Ruta:** `VPN → VPN Wizard`. Los valores del asistente son los siguientes.
+**9.1 — Asistente de VPN**
+
+**Ruta:** `VPN → IPsec Wizard`. Los valores del asistente son los siguientes.
 
 **Paso 1 — VPN Setup:**
 
@@ -567,7 +579,7 @@ ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 |---|---|
 | Name | `VPN-Jump` |
 | Template Type | `Remote Access` |
-| Remote Device Type | `FortiClient` (Windows / macOS) |
+| Remote Device Type | `Native` → `Windows Native` |
 
 **Paso 2 — Authentication:**
 
@@ -585,31 +597,80 @@ ping -f -l 1432 <gateway>   # 1432 + 28 = 1460: debe pasar sin fragmentar
 | Local Interface | `port2` |
 | Local Address | `Red-Jump` |
 | Client Address Range | `10.7.30.145-10.7.30.150` |
-| Subnet Mask | `255.255.255.255` |
-| Enable IPv4 Split Tunnel | Activado |
-| Allow Endpoint Registration | Desactivado |
 
-> **Split tunnel hacia `Red-Jump`:** al conectar, el cliente solo recibe la ruta hacia la LAN del Jump Server. El resto del tráfico sigue por su red local, y el Web Server no tiene ruta desde el cliente.
+**Paso 4 — Review Settings:** pulsar **Create** y esperar a que termine **sin mensajes de error**. En la pantalla de resumen deben quedar con check verde la Fase 1, la Fase 2, **L2TP** y **Address**.
 
-**Paso 4 — Client Options:**
+> ⚠️ **El asistente crea todos los objetos en una sola operación.** Si se detiene con `Unable to setup VPN` y la línea **Address** en rojo, quedaron objetos de un túnel anterior (por ejemplo `VPN-Jump_range` y `VPN-Jump_split` del túnel de FortiClient: al borrar un túnel desde la GUI esos objetos no se borran). Se limpian por CLI, en este orden, y se repite el asistente completo:
+>
+> ```bash
+> config vpn ipsec phase2-interface
+>     delete "VPN-Jump"
+> end
+> config vpn ipsec phase1-interface
+>     delete "VPN-Jump"
+> end
+> config firewall addrgrp
+>     delete "VPN-Jump_split"
+> end
+> config firewall address
+>     delete "VPN-Jump_range"
+> end
+> ```
+>
+> Antes de borrar, se verifica qué quedó con `show firewall address | grep -i VPN-Jump` y `show firewall addrgrp | grep -i VPN-Jump`. No se tocan `Pool-VPN` ni `Red-Jump` (Paso 8).
 
-| Campo | Valor |
+**9.2 — Propuesta de cifrado a nivel DES (CLI)**
+
+El asistente no permite editar las propuestas sin convertir el túnel, y el cliente de Windows debe coincidir exactamente con ellas. Se fijan desde la consola del FortiGate (script: [`scripts/fortigate-cli.txt`](scripts/fortigate-cli.txt)):
+
+```bash
+config vpn ipsec phase1-interface
+    edit "VPN-Jump"
+        set proposal des-sha1 des-sha256
+        set dhgrp 14
+        set net-device enable
+    next
+end
+config vpn ipsec phase2-interface
+    edit "VPN-Jump"
+        set proposal des-sha1 des-sha256
+        set pfs disable
+    next
+end
+```
+
+| Ajuste | Motivo |
 |---|---|
-| Save Password | Activado |
-| Auto Connect | Desactivado |
-| Always Up (Keep Alive) | Desactivado |
+| `proposal des-sha1 des-sha256` | Única familia de cifrado disponible (DES). Se ofrecen SHA1 y SHA256 para poder usar cualquiera de los dos en Windows. |
+| `dhgrp 14` | Grupo Diffie-Hellman 14, que el cliente de Windows soporta (`Group14`). |
+| `pfs disable` | El cliente de Windows se configura sin PFS (`-PfsGroup None`). |
+| `net-device enable` | Los dos clientes salen a Internet con la misma IP pública (`202.50.73.10`, NAT del Router Cisco). Con `net-device disable`, la documentación de Fortinet indica que solo un equipo detrás del mismo NAT puede establecer el túnel L2TP sobre IPsec. |
 
-Pulsar **Create** y esperar a que termine **sin mensajes de error**.
-
-> ⚠️ El asistente crea todos los objetos en una sola operación. Si aparece un error (por ejemplo `object already exists`), el túnel quedó a medias: borrarlo desde `VPN → IPsec Tunnels` (antes, las políticas que creó en `Policy & Objects → Firewall Policy`) y repetir el asistente completo.
-
-**Verificación de la Fase 1** (solo lectura, desde la consola del FortiGate):
+**Verificación** (solo lectura, desde la consola del FortiGate):
 
 ```bash
 show vpn ipsec phase1-interface VPN-Jump
+show vpn ipsec phase2-interface VPN-Jump
+show vpn l2tp
 ```
 
-Debe mostrar `set type dynamic`, `set xauthtype auto`, `set authusrgrp "VPN-Todos"`, el rango de clientes (`ipv4-start-ip 10.7.30.145` / `ipv4-end-ip 10.7.30.150`) y una propuesta con AES.
+Debe mostrar:
+
+* **Fase 1:** `set type dynamic`, `set wizard-type dialup-windows`, `set proposal des-sha1 des-sha256`, `set dhgrp 14` y `set net-device enable`.
+* **Fase 2:** `set encapsulation transport-mode`, `set l2tp enable`, `set proposal des-sha1 des-sha256` y `set pfs disable`.
+* **L2TP:** `set status enable`, `set sip 10.7.30.145`, `set eip 10.7.30.150` y `set usrgrp "VPN-Todos"`.
+
+**Parámetros que deben coincidir entre el FortiGate y Windows:**
+
+| Parámetro | FortiGate | Cliente de Windows (Paso 15.2) |
+|---|---|---|
+| Protocolo | L2TP sobre IPsec (IKEv1, modo principal) | `-TunnelType L2tp` |
+| Autenticación IPsec | Clave compartida `Lab12345` | `-L2tpPsk "Lab12345"` |
+| Cifrado | DES | `-EncryptionMethod DES` y `-CipherTransformConstants DES` |
+| Integridad | SHA1 (también ofrece SHA256) | `-IntegrityCheckMethod SHA1` y `-AuthenticationTransformConstants SHA196` |
+| Grupo Diffie-Hellman | 14 | `-DHGroup Group14` |
+| PFS | Desactivado | `-PfsGroup None` |
+| Autenticación del usuario | Grupo `VPN-Todos` (PPP) | `-AuthenticationMethod MSChapv2` |
 
 > Ver evidencia: [12_vpn_asistente_fortigate.png](screenshots/12_vpn_asistente_fortigate.png), [13_vpn_asistente_politica_fortigate.png](screenshots/13_vpn_asistente_politica_fortigate.png), [14_vpn_fase1_fortigate.png](screenshots/14_vpn_fase1_fortigate.png)
 
@@ -619,24 +680,26 @@ Debe mostrar `set type dynamic`, `set xauthtype auto`, `set authusrgrp "VPN-Todo
 
 **Ruta:** `Policy & Objects → Firewall Policy`
 
-El asistente del Paso 9 creó una política hacia `port2` para todo el grupo `VPN-Todos`. Esa política **se elimina o se deshabilita**: se reemplaza por las siguientes, que separan a los dos usuarios. El orden importa; el FortiGate evalúa de arriba hacia abajo.
+En FortiOS 7.0 el asistente de L2TP sobre IPsec crea **dos políticas**: una para la negociación L2TP (Incoming `VPN-Jump`, servicio `L2TP`, hacia `port1`) y otra con origen `l2t.root` hacia `port2` para todo el grupo `VPN-Todos`. La primera **se conserva**: sin ella no se establece el túnel (si el asistente no la creó, se crea con los valores de la fila 1). La segunda **se elimina o se deshabilita**: se reemplaza por las políticas 2, 3 y 4, que separan a los dos usuarios. El orden importa; el FortiGate evalúa de arriba hacia abajo.
 
 | # | Name | Incoming | Outgoing | Source | Destination | Service | Action | NAT |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `Deny-SSH-VPN-Basico` | `VPN-Jump` | `port2`, `port3` | `Pool-VPN` + usuario `VPN-Basico` | `Servidores` | `SSH` | DENY | — |
-| 2 | `VPN-Basico-Jump` | `VPN-Jump` | `port2` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTPS` | ACCEPT | ❌ |
-| 3 | `VPN-Privilegiado-Jump` | `VPN-Jump` | `port2` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
-| 4 | `Jump-to-Web` | `port2` | `port3` | `Srv-Jump` | `Srv-Web` | `HTTPS`, `RDP`, `SSH` | ACCEPT | ❌ |
-| 5 | `Bloqueo-Jump-Web-Resto` | `port2` | `port3` | `Srv-Jump` | `all` | `ALL` | DENY | — |
-| 6 | `Instalaciones-Temp` | `port2`, `port3` | `port1` | `Red-Jump`, `Red-Web` | `all` | `ALL` | ACCEPT | ✅ Outgoing Interface Address |
+| 1 | *(creada por el asistente)* | `VPN-Jump` | `port1` | `all` | `all` | `L2TP` | ACCEPT | ❌ |
+| 2 | `Deny-SSH-VPN-Basico` | `l2t.root` | `port2`, `port3` | `Pool-VPN` + usuario `VPN-Basico` | `Servidores` | `SSH` | DENY | — |
+| 3 | `VPN-Basico-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Basico` | `Srv-Jump` | `HTTPS` | ACCEPT | ❌ |
+| 4 | `VPN-Privilegiado-Jump` | `l2t.root` | `port2` | `Pool-VPN` + usuario `VPN-Privilegiado` | `Srv-Jump` | `HTTPS`, `RDP`, `PING` | ACCEPT | ❌ |
+| 5 | `Jump-to-Web` | `port2` | `port3` | `Srv-Jump` | `Srv-Web` | `HTTPS`, `RDP`, `SSH` | ACCEPT | ❌ |
+| 6 | `Bloqueo-Jump-Web-Resto` | `port2` | `port3` | `Srv-Jump` | `all` | `ALL` | DENY | — |
+| 7 | `Instalaciones-Temp` | `port2`, `port3` | `port1` | `Red-Jump`, `Red-Web` | `all` | `ALL` | ACCEPT | ✅ Outgoing Interface Address |
 
 **Ajustes adicionales:**
 
-* **Origen por usuario:** en las políticas 1 a 3, en el campo *Source* se selecciona el objeto `Pool-VPN` y, en la misma casilla, el grupo de usuarios indicado (`VPN-Basico` o `VPN-Privilegiado`). El FortiGate identifica al usuario por su autenticación XAuth.
-* **Política 1 (DENY SSH):** debe quedar **por encima** de las políticas 2 y 3. En *Logging Options* activar **Log Violation Traffic**.
-* **Política 4 (`Jump-to-Web`):** en *Logging Options* activar **All Sessions**, como evidencia de que solo pasan HTTPS, RDP y SSH.
-* **Política 5:** en *Logging Options* activar **Log Violation Traffic**.
-* **Política 6 (`Instalaciones-Temp`):** es **temporal**. Permite a los servidores descargar roles, módulos e instaladores durante la preparación. Se elimina en el Paso 16.
+* **`l2t.root`:** es la interfaz donde el FortiGate recibe el tráfico de los clientes L2TP ya autenticados. Aparece en la lista de interfaces al habilitar L2TP (Paso 9).
+* **Origen por usuario:** en las políticas 2 a 4, en el campo *Source* se selecciona el objeto `Pool-VPN` (el mismo rango que el objeto `VPN-Jump_range` del asistente) y, en la misma casilla, el grupo de usuarios indicado (`VPN-Basico` o `VPN-Privilegiado`). El FortiGate identifica al usuario por su autenticación PPP (MS-CHAPv2) del L2TP.
+* **Política 2 (DENY SSH):** debe quedar **por encima** de las políticas 3 y 4. En *Logging Options* activar **Log Violation Traffic**.
+* **Política 5 (`Jump-to-Web`):** en *Logging Options* activar **All Sessions**, como evidencia de que solo pasan HTTPS, RDP y SSH.
+* **Política 6:** en *Logging Options* activar **Log Violation Traffic**.
+* **Política 7 (`Instalaciones-Temp`):** es **temporal**. Permite a los servidores descargar roles, módulos e instaladores durante la preparación. Se elimina en el Paso 16.
 * Entre el cliente VPN y la LAN del Web Server no hay política: queda denegado por la regla implícita.
 
 > Ver evidencia: [15_politicas_fortigate.png](screenshots/15_politicas_fortigate.png)
@@ -916,7 +979,7 @@ Publish-RDWebClientPackage -Type Production -Latest
 
 ---
 
-### Paso 15. Clientes Windows: FortiClient, certificado y hosts
+### Paso 15. Clientes Windows: VPN nativa, certificado y hosts
 
 En cada cliente (Cliente Básico y Cliente Privilegiado), en PowerShell como administrador.
 
@@ -929,22 +992,38 @@ Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value "10.7.30.131 jump
 Import-Certificate -FilePath .\jump-srv.cer -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
-**15.2 — FortiClient VPN**
+**15.2 — Conexión VPN nativa de Windows (L2TP sobre IPsec)**
 
-Descargar e instalar **FortiClient VPN** (versión gratuita) desde el sitio de Fortinet. Crear la conexión:
+No se instala ningún software: la conexión se crea con el cliente VPN integrado de Windows (script: [`scripts/cliente-windows-vpn.ps1`](scripts/cliente-windows-vpn.ps1)). Son tres comandos, en este orden:
 
-**Ruta:** `FortiClient → Configure VPN → IPsec VPN`
+```powershell
+# 1. Crear la conexión L2TP sobre IPsec con clave compartida
+Add-VpnConnection -Name "VPN-Jump" -ServerAddress 202.50.73.254 -TunnelType L2tp -L2tpPsk "Lab12345" -AuthenticationMethod MSChapv2 -EncryptionLevel Optional -SplitTunneling $true -RememberCredential -Force
 
-| Campo | Valor |
-|---|---|
-| Connection Name | `VPN-Jump` |
-| Remote Gateway | `202.50.73.254` |
-| Authentication Method | `Pre-shared key` (`Lab12345`) |
-| Authentication (XAuth) | `Prompt on login` |
+# 2. Fijar la propuesta IPsec al nivel del FortiGate (DES, SHA1, grupo DH 14, sin PFS)
+Set-VpnConnectionIPsecConfiguration -ConnectionName "VPN-Jump" -AuthenticationTransformConstants SHA196 -CipherTransformConstants DES -EncryptionMethod DES -IntegrityCheckMethod SHA1 -DHGroup Group14 -PfsGroup None -Force
 
-Guardar. Las credenciales se piden al conectar: `basico` en el Cliente Básico y `privilegiado` en el Cliente Privilegiado (contraseña `Lab12345!`).
+# 3. Ruta hacia la LAN del Jump Server (túnel dividido)
+Add-VpnConnectionRoute -ConnectionName "VPN-Jump" -DestinationPrefix 10.7.30.128/29
+```
 
-> Ver evidencia: [24_forticlient_config.png](screenshots/24_forticlient_config.png)
+* **Paso 2:** sin este comando, Windows propone sus algoritmos por defecto y el FortiGate (solo DES) rechaza la negociación. Los valores coinciden con los del Paso 9.2.
+* **Paso 3:** con L2TP el cliente no recibe rutas del FortiGate (no hay *mode-config* como con FortiClient), por eso la ruta hacia `Red-Jump` se agrega en el cliente. El resto del tráfico sigue por la red local del cliente (`-SplitTunneling $true`).
+* **Variante con SHA-256:** el FortiGate también ofrece `des-sha256`. Para usarla, el paso 2 cambia a `-AuthenticationTransformConstants SHA256128 -IntegrityCheckMethod SHA256`.
+
+**15.3 — Conectar**
+
+Las credenciales son las del Paso 8.2: `basico` en el Cliente Básico y `privilegiado` en el Cliente Privilegiado (contraseña `Lab12345!`).
+
+```powershell
+rasdial "VPN-Jump" basico "Lab12345!"          # Cliente Básico
+rasdial "VPN-Jump" privilegiado "Lab12345!"    # Cliente Privilegiado
+ipconfig
+```
+
+Al conectar, `rasdial` responde `Conectado correctamente a VPN-Jump` y `ipconfig` muestra un nuevo adaptador **PPP VPN-Jump** con una IP del rango `10.7.30.145 – .150` y máscara `255.255.255.255`. También se puede conectar desde `Configuración → Red e Internet → VPN`. Para desconectar: `rasdial "VPN-Jump" /disconnect`.
+
+> Ver evidencia: [24_vpn_windows_nativa.png](screenshots/24_vpn_windows_nativa.png)
 
 ---
 
@@ -970,9 +1049,11 @@ Remove-DnsServerForwarder -IPAddress 8.8.8.8 -Force
 
 **17.1 — Usuario sin privilegios (Cliente Básico)**
 
-Conectar `FortiClient → VPN-Jump` con el usuario `basico`.
+Conectar la VPN nativa con el usuario `basico`:
 
 ```powershell
+rasdial "VPN-Jump" basico "Lab12345!"
+ipconfig                                     # adaptador PPP VPN-Jump con IP 10.7.30.145 – .150
 Test-NetConnection 10.7.30.131 -Port 443     # Jump HTTPS: debe responder
 Test-NetConnection 10.7.30.131 -Port 3389    # Jump RDP: debe fallar
 Test-NetConnection 10.7.30.131 -Port 22      # SSH: debe fallar (política explícita)
@@ -985,7 +1066,11 @@ Abrir `https://jump-srv.itla.local/RDWeb/webclient/index.html`, iniciar sesión 
 
 **17.2 — Usuario con privilegios (Cliente Privilegiado)**
 
-Conectar `FortiClient → VPN-Jump` con el usuario `privilegiado`.
+Conectar la VPN nativa con el usuario `privilegiado`:
+
+```powershell
+rasdial "VPN-Jump" privilegiado "Lab12345!"
+```
 
 Abrir el Web Client e iniciar sesión con `ITLA\privilegiado`: aparecen **Sistema de Caja (Web)**, **PuTTY** y **Escritorio Remoto (RDP)**.
 
@@ -993,6 +1078,8 @@ Abrir el Web Client e iniciar sesión con `ITLA\privilegiado`: aparecen **Sistem
 * **Escritorio Remoto (RDP):** conectar a `10.7.30.139` con el usuario `Administrator`. Debe abrir el escritorio del Web Server.
 
 **RemoteApp nativo (RD Web Access):** abrir `https://jump-srv.itla.local/RDWeb`, iniciar sesión con `ITLA\privilegiado` y abrir `PuTTY` o `Escritorio Remoto (RDP)`: se descarga un archivo `.rdp` y la aplicación se abre como RemoteApp a través de RD Gateway.
+
+> **Los dos clientes a la vez:** con los dos conectados a la VPN al mismo tiempo (`basico` y `privilegiado`, ambos con la IP pública `202.50.73.10`), cada uno recibe una IP distinta del rango y conserva sus permisos. Esto depende de `net-device enable` (Paso 9.2).
 
 > Ver evidencia: [29_webclient_privilegiado.png](screenshots/29_webclient_privilegiado.png), [30_putty_ssh_web.png](screenshots/30_putty_ssh_web.png), [31_rdp_remoteapp_web.png](screenshots/31_rdp_remoteapp_web.png), [32_rdweb_remoteapp_nativo.png](screenshots/32_rdweb_remoteapp_nativo.png)
 
@@ -1016,15 +1103,30 @@ Test-NetConnection 8.8.8.8 -Port 443         # Internet: debe fallar
 
 * `Log & Report → Forward Traffic`: filtrar por las políticas `Deny-SSH-VPN-Basico`, `VPN-Basico-Jump`, `VPN-Privilegiado-Jump`, `Jump-to-Web` y `Bloqueo-Jump-Web-Resto`.
 * `Log & Report → System Events → VPN Events`: conexión de `basico` y de `privilegiado` a `VPN-Jump`.
+* Estado del túnel desde la consola del FortiGate:
+
+```bash
+diagnose vpn l2tp status
+diagnose vpn ike gateway list
+```
 
 > Ver evidencia: [34_logs_fortigate.png](screenshots/34_logs_fortigate.png)
 
 **17.5 — Si la VPN no conecta**
 
 1. Confirmar que el cliente llega a `202.50.73.254` (ping) y que la clave compartida y el usuario son correctos.
-2. Confirmar que la propuesta de cifrado del FortiGate incluye AES (Paso 9) y que el cliente es FortiClient.
-3. Ver la negociación en el FortiGate: `diagnose debug application ike -1` y `diagnose debug enable` (apagar con `diagnose debug disable`).
-4. Limpiar el estado antes de reintentar: `diagnose vpn ike gateway flush name VPN-Jump`.
+2. Interpretar el error que muestra Windows:
+
+| Error | Significado | Qué revisar |
+|---|---|---|
+| **789** | Falló la negociación IPsec (capa de seguridad). | La propuesta de Windows no coincide con la del FortiGate, o la clave compartida es distinta: tabla del Paso 9.2 y comandos del Paso 15.2. |
+| **809** | No se establece la conexión de red con el servidor. | Que lleguen los puertos UDP 500, 4500 y 1701 hasta el FortiGate, y la política de negociación L2TP (política 1 del Paso 10). |
+| **691** | Acceso denegado por usuario o contraseña. | El usuario pertenece al grupo `VPN-Todos` (Paso 8) y la contraseña es la correcta. |
+
+3. Confirmar en el FortiGate que `net-device enable` está activo y que la Fase 1 y la Fase 2 muestran las propuestas del Paso 9.2.
+4. Ver la negociación en el FortiGate: `diagnose debug application ike -1` y `diagnose debug enable` (apagar con `diagnose debug disable`).
+5. Limpiar el estado antes de reintentar: `diagnose vpn ike gateway flush name VPN-Jump` en el FortiGate y `rasdial "VPN-Jump" /disconnect` en el cliente.
+6. Si el asistente de VPN se detuvo en **Address** (Paso 9.1), borrar los objetos que dejó un túnel anterior y repetir el asistente completo.
 
 ---
 
@@ -1045,10 +1147,10 @@ Numeradas en el orden en que se toman durante el procedimiento.
 | 09 | [`09_servidores_red.png`](screenshots/09_servidores_red.png) | 7.2 | Servidores con IP estática y ping a su gateway. |
 | 10 | [`10_objetos_fortigate.png`](screenshots/10_objetos_fortigate.png) | 8.1 | Objetos y grupo de direcciones. |
 | 11 | [`11_usuarios_grupos_fortigate.png`](screenshots/11_usuarios_grupos_fortigate.png) | 8.2–8.3 | Usuarios y grupos de la VPN. |
-| 12 | [`12_vpn_asistente_fortigate.png`](screenshots/12_vpn_asistente_fortigate.png) | 9 | Asistente de VPN: pasos 1 y 2. |
-| 13 | [`13_vpn_asistente_politica_fortigate.png`](screenshots/13_vpn_asistente_politica_fortigate.png) | 9 | Asistente de VPN: pasos 3 y 4. |
-| 14 | [`14_vpn_fase1_fortigate.png`](screenshots/14_vpn_fase1_fortigate.png) | 9 | `show vpn ipsec phase1-interface VPN-Jump`. |
-| 15 | [`15_politicas_fortigate.png`](screenshots/15_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden. |
+| 12 | [`12_vpn_asistente_fortigate.png`](screenshots/12_vpn_asistente_fortigate.png) | 9.1 | Asistente de VPN con la plantilla Native (Windows Native): pasos 1 y 2. |
+| 13 | [`13_vpn_asistente_politica_fortigate.png`](screenshots/13_vpn_asistente_politica_fortigate.png) | 9.1 | Asistente de VPN: Policy & Routing y resumen con Fase 1, Fase 2, L2TP y Address en verde. |
+| 14 | [`14_vpn_fase1_fortigate.png`](screenshots/14_vpn_fase1_fortigate.png) | 9.2 | `show vpn ipsec phase1-interface`, `phase2-interface` y `show vpn l2tp` con la propuesta DES. |
+| 15 | [`15_politicas_fortigate.png`](screenshots/15_politicas_fortigate.png) | 10 | Lista de políticas de firewall en su orden, con `l2t.root` como interfaz de entrada. |
 | 16 | [`16_web_caja_https.png`](screenshots/16_web_caja_https.png) | 11 | Sistema de Caja por HTTPS en el Web Server. |
 | 17 | [`17_web_rdp_ssh.png`](screenshots/17_web_rdp_ssh.png) | 11 | Puertos 22, 443 y 3389 escuchando en el Web Server. |
 | 18 | [`18_jump_dominio.png`](screenshots/18_jump_dominio.png) | 12.1–12.3 | Dominio `itla.local` con los usuarios y grupos. |
@@ -1057,9 +1159,9 @@ Numeradas en el orden en que se toman durante el procedimiento.
 | 21 | [`21_remoteapp_programas.png`](screenshots/21_remoteapp_programas.png) | 13.3 | Programas publicados en la colección `Jump-Apps`. |
 | 22 | [`22_remoteapp_asignacion.png`](screenshots/22_remoteapp_asignacion.png) | 13.4 | Asignación de usuarios por programa. |
 | 23 | [`23_webclient_publicado.png`](screenshots/23_webclient_publicado.png) | 14 | Web Client publicado y página de inicio de sesión. |
-| 24 | [`24_forticlient_config.png`](screenshots/24_forticlient_config.png) | 15.2 | Conexión `VPN-Jump` en FortiClient. |
+| 24 | [`24_vpn_windows_nativa.png`](screenshots/24_vpn_windows_nativa.png) | 15.2–15.3 | PowerShell del cliente: conexión `VPN-Jump` creada, propuesta IPsec fijada y `rasdial` conectado. |
 | 25 | [`25_politica_temporal_eliminada.png`](screenshots/25_politica_temporal_eliminada.png) | 16 | Lista de políticas sin `Instalaciones-Temp`. |
-| 26 | [`26_vpn_basico_conectado.png`](screenshots/26_vpn_basico_conectado.png) | 17.1 | VPN conectada con `basico` e IP asignada. |
+| 26 | [`26_vpn_basico_conectado.png`](screenshots/26_vpn_basico_conectado.png) | 17.1 | VPN conectada con `basico`: adaptador PPP VPN-Jump con su IP. |
 | 27 | [`27_webclient_basico.png`](screenshots/27_webclient_basico.png) | 17.1 | Web Client del usuario sin privilegios: solo el servicio Web. |
 | 28 | [`28_ssh_basico_denegado.png`](screenshots/28_ssh_basico_denegado.png) | 17.1 | SSH del usuario sin privilegios denegado. |
 | 29 | [`29_webclient_privilegiado.png`](screenshots/29_webclient_privilegiado.png) | 17.2 | Web Client del usuario con privilegios: Web, PuTTY y RDP. |
@@ -1080,10 +1182,12 @@ Numeradas en el orden en que se toman durante el procedimiento.
 ├── scripts/
 │   ├── sw-usuarios.txt        ← switch de usuarios: VLAN 10 y trunk
 │   ├── cisco-base.txt         ← interfaces, VLAN 10, DHCP y NAT del router Cisco
-│   ├── fortigate-cli.txt      ← acceso inicial y MTU/MSS del FortiGate
+│   ├── fortigate-cli.txt      ← acceso inicial, MTU/MSS y propuesta DES de la VPN
 │   ├── web-server.ps1         ← Web Server: IIS HTTPS, RDP y SSH
-│   └── jump-server.ps1        ← Jump Server: dominio, usuarios y Web Client
+│   ├── jump-server.ps1        ← Jump Server: dominio, usuarios y Web Client
+│   └── cliente-windows-vpn.ps1 ← clientes: VPN nativa L2TP/IPsec (DES) y ruta
 ├── running-configs/
 │   ├── sw-usuarios-running-config.txt
 │   ├── cisco-running-config.txt
 │   └── fortigate-running-config.conf
+```
