@@ -725,7 +725,7 @@ Para lograr esto de manera efectiva:
 
 3. **El usuario fuerza la aparición del portal cautivo** ingresando a la IP del Jump Server vía HTTP (`http://10.7.30.131`). Una vez el FortiGate registra las credenciales, activa la política restrictiva correspondiente (`VPN-Basico` o `VPN-Privilegiado`).
 
-![Portal cautivo de autenticación del FortiGate](screenshots/35_portal_cautivo_fortigate.png)
+[Portal cautivo de autenticación del FortiGate](screenshots/35_portal_cautivo_fortigate.png)
 
 Una vez completada esta validación, el usuario es redirigido a la colección de RemoteApp, donde también se aplican restricciones a nivel de IIS.
 
