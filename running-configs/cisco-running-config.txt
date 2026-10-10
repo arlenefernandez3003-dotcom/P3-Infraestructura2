@@ -1,0 +1,128 @@
+Current configuration : 1564 bytes
+!
+! Last configuration change at 14:18:07 UTC Sat Oct 10 2026
+!
+version 15.4
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname R-CISCO
+!
+boot-start-marker
+boot-end-marker
+!
+aqm-register-fnf
+!
+!
+no aaa new-model
+mmi polling-interval 60
+no mmi auto-configure
+no mmi pvc
+mmi snmp-timeout 180
+!
+!
+!
+!
+!
+!
+
+
+!
+ip dhcp excluded-address 10.7.30.1 10.7.30.9
+!
+ip dhcp pool USUARIOS-V10
+ network 10.7.30.0 255.255.255.128
+ default-router 10.7.30.2
+ dns-server 8.8.8.8 8.8.4.4
+!
+!
+!
+no ip domain lookup
+ip cef
+no ipv6 cef
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+!
+!
+!
+!
+redundancy
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Ethernet0/0
+ description WAN hacia la Nube PNET
+ ip address 202.50.73.10 255.255.255.0
+ ip nat outside
+ ip virtual-reassembly in
+!
+interface Ethernet0/1
+ description Trunk hacia SW-USUARIOS
+ no ip address
+!
+interface Ethernet0/1.10
+ description VLAN 10 - Usuarios
+ encapsulation dot1Q 10
+ ip address 10.7.30.2 255.255.255.128
+ ip nat inside
+ ip virtual-reassembly in
+ ip tcp adjust-mss 1440
+!
+interface Ethernet0/2
+ no ip address
+ shutdown
+!
+interface Ethernet0/3
+ no ip address
+ shutdown
+!
+ip forward-protocol nd
+!
+!
+no ip http server
+no ip http secure-server
+ip nat inside source list NAT-USUARIOS interface Ethernet0/0 overload
+ip route 0.0.0.0 0.0.0.0 202.50.73.2
+!
+ip access-list extended NAT-USUARIOS
+ permit ip 10.7.30.0 0.0.0.127 any
+!
+!
+!
+!
+control-plane
+!
+!
+!
+!
+!
+!
+!
+!
+line con 0
+ logging synchronous
+line aux 0
+line vty 0 4
+ login
+ transport input none
+!
+!
+end
